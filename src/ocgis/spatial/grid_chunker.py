@@ -1,8 +1,9 @@
 import logging
-import os
-
 import netCDF4 as nc
 import numpy as np
+import os
+from shapely.geometry import box
+
 from ocgis.base import AbstractOcgisObject, grid_abstraction_scope
 from ocgis.collection.field import Field
 from ocgis.constants import GridChunkerConstants, RegriddingRole, Topology, DMK
@@ -16,7 +17,6 @@ from ocgis.variable.dimension import Dimension
 from ocgis.variable.geom import GeometryVariable
 from ocgis.vmachine.core import vm
 from ocgis.vmachine.mpi import redistribute_by_src_idx
-from shapely.geometry import box
 
 
 class GridChunker(AbstractOcgisObject):
@@ -92,13 +92,17 @@ class GridChunker(AbstractOcgisObject):
     :param bool eager: If ``True``, load grid data from disk before chunking. This avoids always loading the data from
      disk for sourced datasets following a subset. There will be an improvement in performance but an increase in the
      memory used.
+    :param bool smm: If ``True``, execute a full regridding operation by generating weights and executing a sparse
+     matrix multiplication using ESMF. The argument to ``smm`` takes precedence over ``genweights``. Data variables
+     associated with the source field are regridded and inserted into the destination field's output file.
     :raises: ValueError
     """
 
     def __init__(self, source, destination, nchunks_dst=None, paths=None, check_contains=False, allow_masked=True,
                  src_grid_resolution=None, dst_grid_resolution=None, optimized_bbox_subset='auto', iter_dst=None,
                  buffer_value=None, redistribute=False, genweights=False, esmf_kwargs=None, use_spatial_decomp='auto',
-                 eager=True):
+                 eager=True, smm=False):
+        # tdk: doc smm
         self._src_grid = None
         self._dst_grid = None
         self._buffer_value = None
@@ -110,6 +114,7 @@ class GridChunker(AbstractOcgisObject):
         self.source = source
         self.destination = destination
         self.eager = eager
+        self.smm = smm
 
         if esmf_kwargs is None:
             esmf_kwargs = {}
@@ -569,7 +574,7 @@ class GridChunker(AbstractOcgisObject):
             src_slices.append(src_slc)
 
             # Only write destinations if an iterator is not provided.
-            if self.iter_dst is None:
+            if self.iter_dst is None or self.smm is False:
                 zip_args = [[sub_src, sub_dst], [src_path, dst_path]]
             else:
                 zip_args = [[sub_src], [src_path]]
@@ -586,8 +591,9 @@ class GridChunker(AbstractOcgisObject):
             ctr += 1
 
             # Generate an ESMF weights file if requested and at least one rank has data on it.
-            if self.genweights and len(vm.get_live_ranks_from_object(sub_src)) > 0:
+            if (self.genweights or self.smm) and len(vm.get_live_ranks_from_object(sub_src)) > 0:
                 vm.barrier()
+                # tdk: rename: to like handle ESMF or something
                 self.write_esmf_weights(src_path, dst_path, wgt_path, src_grid=sub_src, dst_grid=sub_dst)
                 vm.barrier()
 
@@ -660,31 +666,47 @@ class GridChunker(AbstractOcgisObject):
         :param dst_grid: If provided, use this destination grid for identifying ESMF parameters
         :type dst_grid: :class:`ocgis.spatial.grid.AbstractGrid`
         """
+        # tdk: doc
+        # tdk: comment
 
-        ocgis_lh(logger='grid_chunker', msg='entering write_esmf_weights', level=logging.DEBUG)
-        assert wgt_path is not None
         if src_grid is None:
             src_grid = self.src_grid
         if dst_grid is None:
             dst_grid = self.dst_grid
-        srcfield, srcgrid = create_esmf_field(src_path, src_grid, self.esmf_kwargs)
-        ocgis_lh(logger='grid_chunker', msg='finished creating source ESMPy field', level=logging.DEBUG)
-        dstfield, dstgrid = create_esmf_field(dst_path, dst_grid, self.esmf_kwargs)
-        ocgis_lh(logger='grid_chunker', msg='finished creating destination ESMPy field', level=logging.DEBUG)
-        regrid = None
 
-        try:
-            regrid = create_esmf_regrid(srcfield=srcfield, dstfield=dstfield, filename=wgt_path, **self.esmf_kwargs)
-        finally:
-            to_destroy = [regrid, srcgrid, srcfield, dstgrid, dstfield]
-            for t in to_destroy:
-                if t is not None:
-                    t.destroy()
-            del regrid
-            del srcgrid
-            del srcfield
-            del dstgrid
-            del dstfield
+        if self.smm:
+            from ocgis.regrid.base import RegridOperation
+            from ESMF.api.constants import RegridMethod
+            # tdk: need to test "regrid_options" right now it does not use esmf_kwargs at all
+            regrid_options = {'split': False}  # , 'regrid_method': RegridMethod.CONSERVE}
+            ro = RegridOperation(src_grid.parent, dst_grid.parent, regrid_options=regrid_options)
+            regridded = ro.execute()
+            regridded.write(dst_path)
+        elif self.genweights:
+            # tdk: feature: this needs to use RegridOperation as well
+            ocgis_lh(logger='grid_chunker', msg='entering write_esmf_weights', level=logging.DEBUG)
+            assert wgt_path is not None
+
+            srcfield, srcgrid = create_esmf_field(src_path, src_grid, self.esmf_kwargs)
+            ocgis_lh(logger='grid_chunker', msg='finished creating source ESMPy field', level=logging.DEBUG)
+            dstfield, dstgrid = create_esmf_field(dst_path, dst_grid, self.esmf_kwargs)
+            ocgis_lh(logger='grid_chunker', msg='finished creating destination ESMPy field', level=logging.DEBUG)
+            regrid = None
+
+            try:
+                regrid = create_esmf_regrid(srcfield=srcfield, dstfield=dstfield, filename=wgt_path, **self.esmf_kwargs)
+            finally:
+                to_destroy = [regrid, srcgrid, srcfield, dstgrid, dstfield]
+                for t in to_destroy:
+                    if t is not None:
+                        t.destroy()
+                del regrid
+                del srcgrid
+                del srcfield
+                del dstgrid
+                del dstfield
+        else:
+            raise NotImplementedError
 
     def _gc_remap_weight_variable_(self, ii, wvn, odata, src_indices, dst_indices, ifile, gidx,
                                    split_grids_directory=None):

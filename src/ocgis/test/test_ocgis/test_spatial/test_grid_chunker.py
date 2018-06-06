@@ -1,14 +1,18 @@
+import numpy as np
 import os
 import sys
-
-import numpy as np
+from copy import deepcopy
 from mock import mock, PropertyMock
+from shapely.geometry import box
+
 from ocgis import RequestDataset, Field, vm, env
 from ocgis.base import get_variable_names
 from ocgis.constants import MPIWriteMode, GridChunkerConstants, VariableName
 from ocgis.driver.nc_ugrid import DriverNetcdfUGRID
+from ocgis.regrid.base import RegridOperation
 from ocgis.spatial.grid import GridUnstruct, Grid, AbstractGrid
 from ocgis.spatial.grid_chunker import GridChunker, does_contain, get_grid_object
+from ocgis.test import create_exact_field
 from ocgis.test.base import attr, AbstractTestInterface, create_gridxy_global, TestBase
 from ocgis.test.test_ocgis.test_driver.test_nc_scrip import FixtureDriverNetcdfSCRIP
 from ocgis.variable.base import Variable
@@ -16,7 +20,6 @@ from ocgis.variable.crs import Spherical
 from ocgis.variable.dimension import Dimension
 from ocgis.variable.temporal import TemporalVariable
 from ocgis.vmachine.mpi import MPI_COMM, MPI_RANK
-from shapely.geometry import box
 
 
 class Test(TestBase):
@@ -369,3 +372,38 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         gc = self.fixture_grid_chunker(nchunks_dst=None)
         self.assertIsNotNone(gc.nchunks_dst)
         self.assertEqual(gc.nchunks_dst, (10, 10))
+
+    @attr('esmf', 'mpi')
+    def test_write_esmf_weights(self):
+        # tdk: test in parallel
+
+        # tdk: remove
+        self.remove_dir = False
+        print(self.current_dir_output)
+
+        src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
+        src_field = create_exact_field(src_grid, 'foo', ntime=3)
+        dst_field = deepcopy(src_field)
+
+        master_path = self.get_temporary_file_path('foo.nc')
+        # Keep the master variable when writing the master file. It is needed by the inserter.
+        dst_field.write(master_path)
+
+        dst_field.remove_variable('foo')
+
+        # ro = RegridOperation(src_field, dst_field, regrid_options={'split': False})
+        # ret = ro.execute()
+        # actual = ret.data_variables[0].mv()
+        # desired = src_field.data_variables[0].mv()
+        # print(actual.sum(), desired.sum())
+
+        paths = {'wd': self.current_dir_output}
+        gc = GridChunker(src_field, dst_field, nchunks_dst=(2, 2), smm=True, paths=paths)
+        gc.write_chunks()
+
+        index_path = os.path.join(self.current_dir_output, gc.paths['index_file'])
+        gc.insert_weighted(index_path, self.current_dir_output, master_path)
+
+        actual = RequestDataset(master_path).create_field().data_variables[0].mv()
+        desired = src_field.data_variables[0].mv()
+        self.assertNumpyAll(actual, desired)
