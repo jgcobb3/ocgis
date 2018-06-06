@@ -1,15 +1,13 @@
-import numpy as np
 import os
 import sys
 from copy import deepcopy
-from mock import mock, PropertyMock
-from shapely.geometry import box
 
+import numpy as np
+from mock import mock, PropertyMock
 from ocgis import RequestDataset, Field, vm, env
 from ocgis.base import get_variable_names
 from ocgis.constants import MPIWriteMode, GridChunkerConstants, VariableName
 from ocgis.driver.nc_ugrid import DriverNetcdfUGRID
-from ocgis.regrid.base import RegridOperation
 from ocgis.spatial.grid import GridUnstruct, Grid, AbstractGrid
 from ocgis.spatial.grid_chunker import GridChunker, does_contain, get_grid_object
 from ocgis.test import create_exact_field
@@ -20,6 +18,7 @@ from ocgis.variable.crs import Spherical
 from ocgis.variable.dimension import Dimension
 from ocgis.variable.temporal import TemporalVariable
 from ocgis.vmachine.mpi import MPI_COMM, MPI_RANK
+from shapely.geometry import box
 
 
 class Test(TestBase):
@@ -376,6 +375,7 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
     @attr('esmf', 'mpi')
     def test_write_esmf_weights(self):
         # tdk: test in parallel
+        # tdk: comment
 
         # tdk: remove
         self.remove_dir = False
@@ -398,8 +398,17 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         # print(actual.sum(), desired.sum())
 
         paths = {'wd': self.current_dir_output}
-        gc = GridChunker(src_field, dst_field, nchunks_dst=(2, 2), smm=True, paths=paths)
+        gc = GridChunker(src_field, dst_field, nchunks_dst=(2, 2), smm=True, paths=paths,
+                         esmf_kwargs={'regrid_method': 'BILINEAR'})
         gc.write_chunks()
+
+        # for ii in range(1, 5):
+        #     for prefix in ['src', 'dst']:
+        #         p = os.path.join(self.current_dir_output, 'split_{}_{}.nc'.format(prefix, ii))
+        #         outp = os.path.join(self.current_dir_output, '02-split_{}_{}.shp'.format(prefix, ii))
+        #         field = RequestDataset(p).create_field()
+        #         field.set_abstraction_geom()
+        #         field.geom.write_vector(outp)
 
         index_path = os.path.join(self.current_dir_output, gc.paths['index_file'])
         gc.insert_weighted(index_path, self.current_dir_output, master_path)
