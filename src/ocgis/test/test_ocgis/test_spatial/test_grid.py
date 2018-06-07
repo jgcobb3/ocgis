@@ -485,8 +485,11 @@ class TestGrid(AbstractTestInterface):
         mask = grid.get_mask(create=True)
         self.assertEqual(mask.ndim, 2)
         self.assertFalse(np.any(mask))
+        mask[1, 1] = True
         self.assertTrue(grid.is_vectorized)
         self.assertEqual(grid.parent.dimension_map.get_spatial_mask(), grid.mask_variable.name)
+        grid.set_mask(mask)
+        self.assertEqual(mask.sum(), grid.get_mask().sum())
         grid = self.get_gridxy()
         self.assertIsNone(grid.get_mask())
 

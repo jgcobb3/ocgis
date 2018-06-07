@@ -382,10 +382,19 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         print(self.current_dir_output)
 
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
+        # mask = src_grid.get_mask(create=True)
+        # mask[4, 5] = True
+        # mask[25, 27] = True
+        # src_grid.set_mask(mask)
+        # self.assertEqual(src_grid.get_mask().sum(), 2)
         src_field = create_exact_field(src_grid, 'foo', ntime=3)
         dst_field = deepcopy(src_field)
 
-        master_path = self.get_temporary_file_path('foo.nc')
+        if vm.rank == 0:
+            master_path = self.get_temporary_file_path('foo.nc')
+        else:
+            master_path = None
+        master_path = vm.bcast(master_path)
         # Keep the master variable when writing the master file. It is needed by the inserter.
         dst_field.write(master_path)
 
@@ -410,9 +419,13 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         #         field.set_abstraction_geom()
         #         field.geom.write_vector(outp)
 
-        index_path = os.path.join(self.current_dir_output, gc.paths['index_file'])
-        gc.insert_weighted(index_path, self.current_dir_output, master_path)
+        with vm.scoped('index and reconstruct', [0]):
+            if not vm.is_null:
+                index_path = os.path.join(self.current_dir_output, gc.paths['index_file'])
+                gc.insert_weighted(index_path, self.current_dir_output, master_path)
 
-        actual = RequestDataset(master_path).create_field().data_variables[0].mv()
-        desired = src_field.data_variables[0].mv()
-        self.assertNumpyAll(actual, desired)
+                actual_field = RequestDataset(master_path).create_field()
+                actual = actual_field.data_variables[0].mv()
+                desired = src_field.data_variables[0].mv()
+                # self.assertEqual(actual_field.grid.get_mask().sum(), 2)
+                self.assertNumpyAll(actual, desired)

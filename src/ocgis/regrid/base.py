@@ -537,6 +537,7 @@ def iter_esmf_fields(ofield, regrid_method='auto', value_mask=None, split=True):
                 value_mask = np.squeeze(value_mask, axis=to_squeeze)
 
     # Create the ESMF grid
+    # tdk: rename: create_esmf_grid
     egrid = get_esmf_grid(ofield.grid, regrid_method=regrid_method, value_mask=value_mask)
 
     if split:

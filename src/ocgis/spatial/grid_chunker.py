@@ -348,6 +348,9 @@ class GridChunker(AbstractOcgisObject):
         :param str dst_master_path: Path to the destination master weight file.
         """
 
+        if vm.size > 1:
+            raise NotImplementedError('serial only')
+
         index_field = RequestDataset(index_path).get()
         gs_index_v = index_field[GridChunkerConstants.IndexFile.NAME_INDEX_VARIABLE]
         dst_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_DESTINATION_VARIABLE]
@@ -697,7 +700,6 @@ class GridChunker(AbstractOcgisObject):
 
         if self.smm:
             from ocgis.regrid.base import RegridOperation
-            from ESMF.api.constants import RegridMethod
             regrid_options = {'split': False, 'filename': wgt_path}
             if 'regrid_method' in self.esmf_kwargs:
                 regrid_options['regrid_method'] = self.esmf_kwargs.get('regrid_method')
