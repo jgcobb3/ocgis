@@ -18,6 +18,7 @@ from ocgis.util.helpers import get_esmf_corners_from_ocgis_corners, create_ocgis
 from ocgis.util.logging_ocgis import ocgis_lh
 from ocgis.variable.base import Variable
 from ocgis.variable.crs import Spherical, create_crs
+from ocgis.vmachine.mpi import barrier_print
 
 
 class RegridOperation(AbstractOcgisObject):
@@ -359,7 +360,7 @@ def get_esmf_grid(ogrid, regrid_method='auto', value_mask=None):
     x_dimension = get_dimension(DMK.X, dimensions=dimensions)
 
     # ESMPy has index 0 = x-coordinate and index 1 = y-coordinate.
-    max_index = np.array([x_dimension.size, y_dimension.size], dtype=np.int32)
+    max_index = np.array([x_dimension.size_global, y_dimension.size_global], dtype=np.int32)
     pkwds['coord_sys'] = ESMF.CoordSys.SPH_DEG
     pkwds['staggerloc'] = ESMF.StaggerLoc.CENTER
     pkwds['max_index'] = max_index
@@ -603,7 +604,7 @@ def check_fields_for_regridding(source, destination, regrid_method='auto'):
     # Check coordinate systems #########################################################################################
 
     for element in [source, destination]:
-        if not isinstance(element.crs, Spherical):
+        if element.crs != Spherical():
             msg_a = 'Only spherical coordinate systems allowed for regridding.'
             raise RegriddingError(msg_a)
 
@@ -722,6 +723,8 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
                 create_rh = False
             else:
                 create_rh = True
+            barrier_print('src_efield', src_efield.__dict__)
+            barrier_print('dst_efield', dst_efield.__dict__)
             regrid = ESMF.Regrid(src_efield, dst_efield, unmapped_action=ESMF.UnmappedAction.IGNORE,
                                  regrid_method=regrid_method, src_mask_values=[0], dst_mask_values=[0],
                                  create_rh=create_rh)

@@ -98,8 +98,7 @@ class GridChunker(AbstractOcgisObject):
     def __init__(self, source, destination, nchunks_dst=None, paths=None, check_contains=False, allow_masked=True,
                  src_grid_resolution=None, dst_grid_resolution=None, optimized_bbox_subset='auto', iter_dst=None,
                  buffer_value=None, redistribute=False, genweights=False, esmf_kwargs=None, use_spatial_decomp='auto',
-                 eager=True, smm=False):
-        # tdk: doc smm
+                 eager=True):
         self._src_grid = None
         self._dst_grid = None
         self._buffer_value = None
@@ -111,11 +110,10 @@ class GridChunker(AbstractOcgisObject):
         self.source = source
         self.destination = destination
         self.eager = eager
-        self.smm = smm
 
         if esmf_kwargs is None:
             esmf_kwargs = {}
-        if self.genweights or self.smm:
+        if self.genweights:
             esmf_kwargs = esmf_kwargs.copy()
             update_esmf_kwargs(esmf_kwargs)
         self.esmf_kwargs = esmf_kwargs
@@ -574,7 +572,7 @@ class GridChunker(AbstractOcgisObject):
             src_slices.append(src_slc)
 
             # Only write destinations if an iterator is not provided.
-            if self.iter_dst is None or self.smm is False:
+            if self.iter_dst is None:
                 zip_args = [[sub_src, sub_dst], [src_path, dst_path]]
             else:
                 zip_args = [[sub_src], [src_path]]
@@ -591,7 +589,7 @@ class GridChunker(AbstractOcgisObject):
             ctr += 1
 
             # Generate an ESMF weights file if requested and at least one rank has data on it.
-            if (self.genweights or self.smm) and len(vm.get_live_ranks_from_object(sub_src)) > 0:
+            if self.genweights and len(vm.get_live_ranks_from_object(sub_src)) > 0:
                 vm.barrier()
                 # tdk: rename: to like handle ESMF or something
                 self.write_esmf_weights(src_path, dst_path, wgt_path, src_grid=sub_src, dst_grid=sub_dst)
@@ -668,7 +666,6 @@ class GridChunker(AbstractOcgisObject):
         """
         # tdk: doc
         # tdk: comment
-        # tdk: feature: this always writes the weights which means two route handle generations for smm; could eliminate maybe...
 
         if src_grid is None:
             src_grid = self.src_grid
@@ -698,12 +695,47 @@ class GridChunker(AbstractOcgisObject):
             del dstgrid
             del dstfield
 
-        if self.smm:
+    @staticmethod
+    def smm(index_path, wd=None):
+        # tdk: doc
+        # tdk: comment
+        # tdk: clean-up
+        # tdk: reorder
+
+        if wd is None:
+            wd = ''
+
+        index_field = RequestDataset(index_path).get()
+        gs_index_v = index_field[GridChunkerConstants.IndexFile.NAME_INDEX_VARIABLE]
+
+        src_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_SOURCE_VARIABLE]
+        src_filenames = index_field[src_filenames]
+        src_filenames = src_filenames.join_string_value()
+
+        dst_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_DESTINATION_VARIABLE]
+        dst_filenames = index_field[dst_filenames]
+        dst_filenames = dst_filenames.join_string_value()
+
+        wgt_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_WEIGHTS_VARIABLE]
+        wgt_filenames = index_field[wgt_filenames]
+        wgt_filenames = wgt_filenames.join_string_value()
+
+        for ii in range(src_filenames.size):
+            src_path = os.path.join(wd, src_filenames[ii])
+            src_field = RequestDataset(src_path).create_field()
+            src_field.load()
+
+            dst_path = os.path.join(wd, dst_filenames[ii])
+            dst_field = RequestDataset(dst_path).create_field()
+            dst_field.load()
+
             from ocgis.regrid.base import RegridOperation
-            regrid_options = {'split': False, 'filename': wgt_path}
-            if 'regrid_method' in self.esmf_kwargs:
-                regrid_options['regrid_method'] = self.esmf_kwargs.get('regrid_method')
-            ro = RegridOperation(src_grid.parent, dst_grid.parent, regrid_options=regrid_options)
+            from ESMF.api.constants import RegridMethod
+            # HACK: Note that weight filenames are stored with their full path.
+            # HACK: Always use a bilinear regridding method to allows for the identity sparse matrix in the case of
+            #       equal grids.
+            regrid_options = {'split': False, 'filename': wgt_filenames[ii], 'regrid_method': RegridMethod.BILINEAR}
+            ro = RegridOperation(src_field, dst_field, regrid_options=regrid_options)
             regridded = ro.execute()
             regridded.write(dst_path)
 
