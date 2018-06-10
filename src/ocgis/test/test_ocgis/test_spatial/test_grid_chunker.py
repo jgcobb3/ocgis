@@ -382,6 +382,8 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         print(self.current_dir_output)
         self.add_barrier = False
 
+        # Create source and destination fields. This is the identity test, so the source and destination fields are
+        # equivalent.
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
         # mask = src_grid.get_mask(create=True)
         # mask[4, 5] = True
@@ -391,6 +393,7 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         src_field = create_exact_field(src_grid, 'foo', ntime=3)
         dst_field = deepcopy(src_field)
 
+        # Write the fields to disk for use in global file reconstruction and testing.
         if vm.rank == 0:
             master_path = self.get_temporary_file_path('foo.nc')
             src_field_path = self.get_temporary_file_path('src_field.nc')
@@ -399,30 +402,34 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
             src_field_path = None
         master_path = vm.bcast(master_path)
         src_field_path = vm.bcast(src_field_path)
-        # Keep the master variable when writing the master file. It is needed by the inserter.
         dst_field.write(master_path)
         src_field.write(src_field_path)
 
+        # Remove the destination data variable to test its creation and filling
         dst_field.remove_variable('foo')
 
+        # Chunk the fields and generate weights
         paths = {'wd': self.current_dir_output}
         gc = GridChunker(src_field, dst_field, nchunks_dst=(2, 2), genweights=True, paths=paths,
                          esmf_kwargs={'regrid_method': 'BILINEAR'})
         gc.write_chunks()
 
+        # This is the path to the index file describing how to reconstruct the grid file
         index_path = os.path.join(self.current_dir_output, gc.paths['index_file'])
 
+        # Execute the sparse matrix multiplication using weights read from file
         gc.smm(index_path, paths['wd'])
 
         with vm.scoped('index and reconstruct', [0]):
             if not vm.is_null:
+                # Reconstruct the global destination file
                 gc.insert_weighted(index_path, self.current_dir_output, master_path)
 
+                # Load the actual values from file (destination)
                 actual_field = RequestDataset(master_path).create_field()
                 actual = actual_field.data_variables[0].mv()
 
+                # Load the desired data from file (original values in the source field)
                 desired = RequestDataset(src_field_path).create_field().data_variables[0].mv()
-                # desired = src_field.data_variables[0].mv()
-                print(actual.sum(), desired.sum())
                 # self.assertEqual(actual_field.grid.get_mask().sum(), 2)
                 self.assertNumpyAll(actual, desired)
