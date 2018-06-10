@@ -18,7 +18,6 @@ from ocgis.util.helpers import get_esmf_corners_from_ocgis_corners, create_ocgis
 from ocgis.util.logging_ocgis import ocgis_lh
 from ocgis.variable.base import Variable
 from ocgis.variable.crs import Spherical, create_crs
-from ocgis.vmachine.mpi import barrier_print
 
 
 class RegridOperation(AbstractOcgisObject):
@@ -622,7 +621,7 @@ def check_fields_for_regridding(source, destination, regrid_method='auto'):
             raise CornersInconsistentError(msg)
 
 
-def regrid_field(source, destination, regrid_method='auto', value_mask=None, split=True, filename=None):
+def regrid_field(source, destination, regrid_method='auto', value_mask=None, split=True, weights_in=None):
     """
     Regrid ``source`` data to match the grid of ``destination``.
 
@@ -636,7 +635,7 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
     :param bool split: See :func:`~ocgis.regrid.base.iter_esmf_fields`.
     :rtype: :class:`ocgis.Field`
     """
-    # tdk: doc filename
+    # tdk: doc weights_in
     # This function runs a series of asserts to make sure the sources and destination are compatible.
     check_fields_for_regridding(source, destination, regrid_method=regrid_method)
 
@@ -719,21 +718,19 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
         # Construct the regrid object. Weight generation actually occurs in this call.
         ocgis_lh(logger='iter_regridded_fields', msg='before ESMF.Regrid', level=logging.DEBUG)
         if build:  # Only create the regrid object once. It may be reused if split=True.
-            if filename is not None:  # If there is a filename, do not create a route handle.
-                create_rh = False
+            if weights_in is None:
+                # Create the weights and ESMF route handle from the grids
+                regrid = ESMF.Regrid(src_efield, dst_efield, unmapped_action=ESMF.UnmappedAction.IGNORE,
+                                     regrid_method=regrid_method, src_mask_values=[0], dst_mask_values=[0])
             else:
-                create_rh = True
-            barrier_print('src_efield', src_efield.__dict__)
-            barrier_print('dst_efield', dst_efield.__dict__)
-            regrid = ESMF.Regrid(src_efield, dst_efield, unmapped_action=ESMF.UnmappedAction.IGNORE,
-                                 regrid_method=regrid_method, src_mask_values=[0], dst_mask_values=[0],
-                                 create_rh=create_rh)
+                # Create ESMF route handle with weights read from file
+                regrid = ESMF.RegridFromFile(src_efield, dst_efield, weights_in)
             build = False
         ocgis_lh(logger='iter_regridded_fields', msg='after ESMF.Regrid', level=logging.DEBUG)
 
         # Perform the regrid operation. "zero_region" only fills values involved with regridding.
         ocgis_lh(logger='iter_regridded_fields', msg='before regrid', level=logging.DEBUG)
-        regridded_esmf_field = regrid(src_efield, dst_efield, zero_region=ESMF.Region.SELECT, filename=filename)
+        regridded_esmf_field = regrid(src_efield, dst_efield, zero_region=ESMF.Region.SELECT)
         e_data = regridded_esmf_field.data  # Regridded data values
 
         # These are the unmapped values coming out of the ESMF regrid operation.

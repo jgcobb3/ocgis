@@ -374,8 +374,8 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
     @attr('esmf', 'mpi')
     def test_write_esmf_weights(self):
-        # tdk: test in parallel
         # tdk: comment
+        # tdk: add support for mask
 
         # tdk: remove
         self.remove_dir = False
@@ -393,19 +393,17 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
         if vm.rank == 0:
             master_path = self.get_temporary_file_path('foo.nc')
+            src_field_path = self.get_temporary_file_path('src_field.nc')
         else:
             master_path = None
+            src_field_path = None
         master_path = vm.bcast(master_path)
+        src_field_path = vm.bcast(src_field_path)
         # Keep the master variable when writing the master file. It is needed by the inserter.
         dst_field.write(master_path)
+        src_field.write(src_field_path)
 
         dst_field.remove_variable('foo')
-
-        # ro = RegridOperation(src_field, dst_field, regrid_options={'split': False})
-        # ret = ro.execute()
-        # actual = ret.data_variables[0].mv()
-        # desired = src_field.data_variables[0].mv()
-        # print(actual.sum(), desired.sum())
 
         paths = {'wd': self.current_dir_output}
         gc = GridChunker(src_field, dst_field, nchunks_dst=(2, 2), genweights=True, paths=paths,
@@ -416,21 +414,15 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
         gc.smm(index_path, paths['wd'])
 
-        # for ii in range(1, 5):
-        #     for prefix in ['src', 'dst']:
-        #         p = os.path.join(self.current_dir_output, 'split_{}_{}.nc'.format(prefix, ii))
-        #         outp = os.path.join(self.current_dir_output, '02-split_{}_{}.shp'.format(prefix, ii))
-        #         field = RequestDataset(p).create_field()
-        #         field.set_abstraction_geom()
-        #         field.geom.write_vector(outp)
-
         with vm.scoped('index and reconstruct', [0]):
             if not vm.is_null:
                 gc.insert_weighted(index_path, self.current_dir_output, master_path)
 
                 actual_field = RequestDataset(master_path).create_field()
                 actual = actual_field.data_variables[0].mv()
-                desired = src_field.data_variables[0].mv()
+
+                desired = RequestDataset(src_field_path).create_field().data_variables[0].mv()
+                # desired = src_field.data_variables[0].mv()
                 print(actual.sum(), desired.sum())
                 # self.assertEqual(actual_field.grid.get_mask().sum(), 2)
                 self.assertNumpyAll(actual, desired)

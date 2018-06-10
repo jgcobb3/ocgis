@@ -734,7 +734,7 @@ class GridChunker(AbstractOcgisObject):
             # HACK: Note that weight filenames are stored with their full path.
             # HACK: Always use a bilinear regridding method to allows for the identity sparse matrix in the case of
             #       equal grids.
-            regrid_options = {'split': False, 'filename': wgt_filenames[ii], 'regrid_method': RegridMethod.BILINEAR}
+            regrid_options = {'split': False, 'weights_in': wgt_filenames[ii], 'regrid_method': RegridMethod.BILINEAR}
             ro = RegridOperation(src_field, dst_field, regrid_options=regrid_options)
             regridded = ro.execute()
             regridded.write(dst_path)
