@@ -385,11 +385,15 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         # Create source and destination fields. This is the identity test, so the source and destination fields are
         # equivalent.
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
-        # mask = src_grid.get_mask(create=True)
-        # mask[4, 5] = True
-        # mask[25, 27] = True
-        # src_grid.set_mask(mask)
-        # self.assertEqual(src_grid.get_mask().sum(), 2)
+
+        # Only test masking in serial to make indexing easier...just being lazy
+        if vm.size == 0:
+            mask = src_grid.get_mask(create=True)
+            mask[4, 5] = True
+            mask[25, 27] = True
+            src_grid.set_mask(mask)
+            self.assertEqual(src_grid.get_mask().sum(), 2)
+
         src_field = create_exact_field(src_grid, 'foo', ntime=3)
         dst_field = deepcopy(src_field)
 
@@ -431,5 +435,10 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
                 # Load the desired data from file (original values in the source field)
                 desired = RequestDataset(src_field_path).create_field().data_variables[0].mv()
-                # self.assertEqual(actual_field.grid.get_mask().sum(), 2)
+
+                if vm.size_global == 1:  # Masking is only tested in serial
+                    self.assertEqual(actual_field.grid.get_mask().sum(), 2)
+                else:
+                    self.assertIsNone(actual_field.grid.get_mask())
+
                 self.assertNumpyAll(actual, desired)
