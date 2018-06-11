@@ -52,6 +52,7 @@ class TestChunkedRWG(TestBase):
 
     @attr('mpi', 'esmf')
     def test_system_chunked_versus_global(self):
+        # tdk: test: smm=True in serial and parallel
         """Test weight files are equivalent using the chunked versus global weight generation approach."""
         if ocgis.vm.size not in [1, 4]:
             raise SkipTest('ocgis.vm.size not in [1, 4]')

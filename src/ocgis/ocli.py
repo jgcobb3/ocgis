@@ -71,13 +71,22 @@ def ocli():
 @click.option('--ignore_degenerate/--no_ignore_degenerate', default=False,
               help='(default=no_ignore_degenerate) If --ignore_degenerate, skip degenerate coordinates when regridding '
                    'and do not raise an exception.')
+@click.option('--smm/--no_smm', default=False,
+              help='If --smm, apply the weights generated during the chunking process, inserting the weighted values '
+                   'into the global destination file.')
 def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, esmf_dst_type, genweights,
                 esmf_regrid_method, spatial_subset, src_resolution, dst_resolution, buffer_distance, wd, persist,
-                eager, ignore_degenerate):
+                eager, ignore_degenerate, smm):
+    # tdk: doc: smm in ocli and update other documentation pages in rst files
     if not ocgis.env.USE_NETCDF4_MPI:
         msg = ('env.USE_NETCDF4_MPI is False. Considerable performance gains are possible if this is True. Is '
                'netCDF4-python built with parallel support?')
         ocgis_lh(msg, level=logging.WARN, logger='ocli.chunked_rwg', force=True)
+
+    # If there is a SMM, weights must be generated, and we do not want to merge the weight files
+    if smm:
+        genweights = True
+        merge = False
 
     if nchunks_dst is not None:
         # Format the chunking decomposition from its string representation.
@@ -146,6 +155,15 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
             source = spatial_subset_path
         if genweights:
             gs.write_esmf_weights(source, destination, weight)
+
+    # Apply the sparse matrix multiplication
+    if smm:
+        index_path = os.path.join(wd, gs.paths['index_file'])
+        gs.smm(index_path, wd)
+        with ocgis.vm.scoped(['insert weighted'], [0]):
+            if not ocgis.vm.is_null:
+                gs.insert_weighted(index_path, wd, rd_dst.uri)
+        ocgis.vm.barrier()
 
     # Create the global weight file. This does not apply to spatial subsets because there will always be one weight
     # file.
