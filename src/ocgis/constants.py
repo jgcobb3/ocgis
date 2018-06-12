@@ -50,7 +50,7 @@ class ESMFGridClass(Enum):
 
     @classmethod
     def get_esmf_class(cls, target):
-        import ESMF
+        from ocgis.regrid.base import ESMF
         if target == cls.GRID:
             ret = ESMF.Grid
         elif target == cls.MESH:

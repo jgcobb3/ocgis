@@ -1,15 +1,15 @@
 import logging
+import os
 from collections import OrderedDict
 from copy import deepcopy
 
 import ESMF
 import numpy as np
-from ESMF.api.constants import RegridMethod
-from ocgis import constants, Dimension
+from ocgis import constants, Dimension, RequestDataset, GridUnstruct
 from ocgis import env
 from ocgis.base import AbstractOcgisObject, get_dimension_names, iter_dict_slices
 from ocgis.collection.field import Field
-from ocgis.constants import DMK
+from ocgis.constants import DMK, GridChunkerConstants
 from ocgis.exc import RegriddingError, CornersInconsistentError
 from ocgis.spatial.grid import Grid, expand_grid
 from ocgis.spatial.spatial_subset import SpatialSubsetOperation
@@ -404,9 +404,9 @@ def get_esmf_grid(ogrid, regrid_method='auto', value_mask=None):
 
     # Attempt to access corners if requested.
     if regrid_method == 'auto' and ogrid.has_bounds:
-        regrid_method = RegridMethod.CONSERVE
+        regrid_method = ESMF.RegridMethod.CONSERVE
 
-    if regrid_method == RegridMethod.CONSERVE:
+    if regrid_method == ESMF.RegridMethod.CONSERVE:
         # Conversion to ESMF objects requires an expanded grid (non-vectorized).
         # TODO: Create ESMF grids from vectorized OCGIS grids.
         expand_grid(ogrid)
@@ -785,3 +785,155 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
 def destroy_esmf_objects(objs):
     for obj in objs:
         obj.destroy()
+
+
+def update_esmf_kwargs(target):
+    if 'regrid_method' not in target:
+        target['regrid_method'] = ESMF.RegridMethod.CONSERVE
+    else:
+        rmap = {'CONSERVE': ESMF.RegridMethod.CONSERVE,
+                'BILINEAR': ESMF.RegridMethod.BILINEAR,
+                'NEAREST_STOD': ESMF.RegridMethod.NEAREST_STOD,
+                'PATCH': ESMF.RegridMethod.PATCH}
+        regrid_method = target['regrid_method']
+        try:
+            target['regrid_method'] = rmap[regrid_method]
+        except KeyError:
+            raise ValueError('Chunked regridding does not support "{}".'.format(regrid_method))
+
+    if 'unmapped_action' not in target:
+        target['unmapped_action'] = ESMF.UnmappedAction.IGNORE
+    else:
+        rmap = {'IGNORE': ESMF.UnmappedAction.IGNORE,
+                'ERROR': ESMF.UnmappedAction.ERROR}
+        unmapped_action = target['unmapped_action']
+        try:
+            target['unmapped_action'] = rmap[unmapped_action]
+        except KeyError:
+            raise ValueError('Chunked regridding does not support "{}".'.format(unmapped_action))
+
+    # Never create a route handle for weight generation only.
+    target['create_rh'] = False
+
+
+def create_esmf_field(*args):
+    grid = create_esmf_grid(*args)
+
+    # TODO: Method to specify "meshloc" at API level
+    if isinstance(grid, ESMF.Mesh):
+        meshloc = ESMF.MeshLoc.ELEMENT
+    else:
+        meshloc = None
+    return ESMF.Field(grid=grid, meshloc=meshloc), grid
+
+
+def create_esmf_grid(filename, grid, esmf_kwargs):
+    filetype = grid.driver.get_esmf_fileformat()
+    klass = grid.driver.get_esmf_grid_class()
+
+    if klass == ESMF.Grid:
+        # Corners are only needed for conservative regridding.
+        if esmf_kwargs.get('regrid_method') == ESMF.RegridMethod.BILINEAR:
+            add_corner_stagger = False
+        else:
+            add_corner_stagger = True
+
+        # If there is a spatial mask, pass this information to grid creation.
+        grid_mask = grid.get_mask()
+        if grid_mask is not None and grid_mask.any():
+            add_mask = True
+            varname = grid.mask_variable.name
+        else:
+            add_mask = False
+            varname = None
+
+        ret = klass(filename=filename, filetype=filetype, add_corner_stagger=add_corner_stagger, is_sphere=False,
+                    add_mask=add_mask, varname=varname)
+    else:
+        meshname = str(grid.dimension_map.get_variable(DMK.ATTRIBUTE_HOST))
+        ret = klass(filename=filename, filetype=filetype, meshname=meshname)
+    return ret
+
+
+def create_esmf_regrid(**kwargs):
+    return ESMF.Regrid(**kwargs)
+
+
+def smm(index_path, wd=None):
+    if wd is None:
+        wd = ''
+
+    index_field = RequestDataset(index_path).get()
+    gs_index_v = index_field[GridChunkerConstants.IndexFile.NAME_INDEX_VARIABLE]
+
+    src_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_SOURCE_VARIABLE]
+    src_filenames = index_field[src_filenames]
+    src_filenames = src_filenames.join_string_value()
+
+    dst_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_DESTINATION_VARIABLE]
+    dst_filenames = index_field[dst_filenames]
+    dst_filenames = dst_filenames.join_string_value()
+
+    wgt_filenames = gs_index_v.attrs[GridChunkerConstants.IndexFile.NAME_WEIGHTS_VARIABLE]
+    wgt_filenames = index_field[wgt_filenames]
+    wgt_filenames = wgt_filenames.join_string_value()
+
+    for ii in range(src_filenames.size):
+        src_path = os.path.join(wd, src_filenames[ii])
+        src_field = RequestDataset(src_path).create_field()
+        src_field.load()
+
+        dst_path = os.path.join(wd, dst_filenames[ii])
+        dst_field = RequestDataset(dst_path).create_field()
+        dst_field.load()
+
+        from ocgis.regrid.base import RegridOperation
+        from ESMF.api.constants import RegridMethod
+        # HACK: Note that weight filenames are stored with their full path.
+        # HACK: Always use a bilinear regridding method to allows for the identity sparse matrix in the case of
+        #       equal grids.
+        regrid_options = {'split': False, 'weights_in': wgt_filenames[ii], 'regrid_method': RegridMethod.BILINEAR}
+        ro = RegridOperation(src_field, dst_field, regrid_options=regrid_options)
+        regridded = ro.execute()
+        regridded.write(dst_path)
+
+    def _gc_remap_weight_variable_(self, ii, wvn, odata, src_indices, dst_indices, ifile, gidx,
+                                   split_grids_directory=None):
+        if wvn == 'S':
+            pass
+        else:
+            ifc = GridChunkerConstants.IndexFile
+            if wvn == 'row':
+                is_unstruct = isinstance(self.dst_grid, GridUnstruct)
+                if is_unstruct:
+                    dst_filename = ifile[gidx[ifc.NAME_DESTINATION_VARIABLE]].join_string_value()[ii]
+                    dst_filename = os.path.join(split_grids_directory, dst_filename)
+                    oindices = RequestDataset(dst_filename).get()[ifc.NAME_DSTIDX_GUID].get_value()
+                else:
+                    y_bounds = ifile[gidx[ifc.NAME_Y_DST_BOUNDS_VARIABLE]].get_value()
+                    x_bounds = ifile[gidx[ifc.NAME_X_DST_BOUNDS_VARIABLE]].get_value()
+                    indices = dst_indices
+
+            elif wvn == 'col':
+                is_unstruct = isinstance(self.src_grid, GridUnstruct)
+                if is_unstruct:
+                    src_filename = ifile[gidx[ifc.NAME_SOURCE_VARIABLE]].join_string_value()[ii]
+                    src_filename = os.path.join(split_grids_directory, src_filename)
+                    oindices = RequestDataset(src_filename).get()[ifc.NAME_SRCIDX_GUID].get_value()
+                else:
+                    y_bounds = ifile[gidx[ifc.NAME_Y_SRC_BOUNDS_VARIABLE]].get_value()
+                    x_bounds = ifile[gidx[ifc.NAME_X_SRC_BOUNDS_VARIABLE]].get_value()
+                    indices = src_indices
+
+            else:
+                raise NotImplementedError
+
+            if not is_unstruct:
+                islice = [slice(y_bounds[ii][0], y_bounds[ii][1]),
+                          slice(x_bounds[ii][0], x_bounds[ii][1])]
+                oindices = indices[islice]
+                oindices = oindices.flatten()
+
+            odata = oindices[odata - 1]
+
+        return odata

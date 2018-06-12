@@ -409,7 +409,7 @@ class AbstractDriver(AbstractOcgisObject):
 
         :rtype: str
         """
-        import ESMF
+        from ocgis.regrid.base import ESMF
         return getattr(ESMF.constants.FileFormat, cls._esmf_fileformat)
 
     @classmethod

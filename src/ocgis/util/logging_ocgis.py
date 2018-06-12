@@ -4,9 +4,8 @@ import os
 import sys
 from warnings import warn
 
-import six
-
 import ocgis
+import six
 from ocgis import env
 from ocgis.exc import OcgWarning
 from ocgis.vmachine.mpi import get_standard_comm_state
@@ -203,7 +202,7 @@ def get_versions():
     else:
         v_cf_units = cf_units.__version__
     try:
-        import ESMF
+        from ocgis.regrid.base import ESMF
     except ImportError:
         v_esmf = None
     else:

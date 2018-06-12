@@ -387,7 +387,7 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
 
         # Only test masking in serial to make indexing easier...just being lazy
-        if vm.size == 0:
+        if vm.size == 1:
             mask = src_grid.get_mask(create=True)
             mask[4, 5] = True
             mask[25, 27] = True
