@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
+import click
 import logging
 import os
 import shutil
 import tempfile
+from shapely.geometry import box
 
-import click
 import ocgis
 from ocgis import RequestDataset, GeometryVariable
 from ocgis.base import grid_abstraction_scope
@@ -13,7 +14,6 @@ from ocgis.constants import DriverKey, Topology, GridChunkerConstants
 from ocgis.spatial.grid_chunker import GridChunker
 from ocgis.spatial.spatial_subset import SpatialSubsetOperation
 from ocgis.util.logging_ocgis import ocgis_lh
-from shapely.geometry import box
 
 
 @click.group()
@@ -110,11 +110,12 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
     else:
         if ocgis.vm.rank == 0:
             # The working directory must not exist to proceed.
-            if os.path.exists(wd):
-                raise ValueError("Working directory 'wd' must not exist.")
-            else:
-                # Make the working directory nesting as needed.
-                os.makedirs(wd)
+            if not smm:
+                if os.path.exists(wd):
+                    raise ValueError("Working directory 'wd' must not exist.")
+                else:
+                    # Make the working directory nesting as needed.
+                    os.makedirs(wd)
         ocgis.vm.barrier()
 
     if merge and not spatial_subset or (spatial_subset and genweights):
@@ -148,18 +149,19 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Write subsets and generate weights if requested in the grid splitter.
     # TODO: Need a weight only option. If chunks are written, then weights are written...
-    if not spatial_subset and nchunks_dst is not None:
-        gs.write_chunks()
-    else:
-        if spatial_subset:
-            source = spatial_subset_path
-        if genweights:
-            gs.write_esmf_weights(source, destination, weight)
+    if not smm:
+        if not spatial_subset and nchunks_dst is not None:
+            gs.write_chunks()
+        else:
+            if spatial_subset:
+                source = spatial_subset_path
+            if genweights:
+                gs.write_esmf_weights(source, destination, weight)
 
     # Apply the sparse matrix multiplication
     if smm:
         index_path = os.path.join(wd, gs.paths['index_file'])
-        gs.smm(index_path, wd)
+        GridChunker.smm(index_path, wd)
         with ocgis.vm.scoped(['insert weighted'], [0]):
             if not ocgis.vm.is_null:
                 gs.insert_weighted(index_path, wd, rd_dst.uri)
