@@ -917,8 +917,11 @@ class Grid(AbstractGrid, AbstractXYZSpatialContainer):
         yb = Variable(name=name_y_bounds, dimensions=[split_dimension, bounds_dimension],
                       attrs={'esmf_role': erole_y},
                       dtype=env.NP_INT)
-        x_name = self.x.dimensions[0].name
-        y_name = self.y.dimensions[0].name
+
+        # x_name = self.x.dimensions[0].name
+        # y_name = self.y.dimensions[0].name
+        x_name = self.dimension_map.get_dimension(DMK.X)[0]
+        y_name = self.dimension_map.get_dimension(DMK.Y)[0]
         for idx, slc in enumerate(slices):
             xb.get_value()[idx, :] = slc[x_name].start, slc[x_name].stop
             yb.get_value()[idx, :] = slc[y_name].start, slc[y_name].stop

@@ -1,11 +1,11 @@
-import ESMF
 import logging
-import numpy as np
 import os
 from collections import OrderedDict
 from copy import deepcopy
 
-from ocgis import constants, Dimension, RequestDataset, GridUnstruct
+import ESMF
+import numpy as np
+from ocgis import constants, Dimension, RequestDataset
 from ocgis import env
 from ocgis.base import AbstractOcgisObject, get_dimension_names, iter_dict_slices
 from ocgis.collection.field import Field
@@ -509,7 +509,12 @@ def iter_esmf_fields(ofield, regrid_method='auto', value_mask=None, split=True):
     :raises: AssertionError
     """
 
-    archetype = ofield.data_variables[0]  # Archetype data variable
+    try:
+        archetype = ofield.data_variables[0]  # Archetype data variable
+    except IndexError:
+        # Use the grid if no data variables are available
+        archetype = ofield.grid
+
     dimension_names = archetype.dimension_names  # Archetype dimension names
     # Spatial coordinate dimensions
     spatial_coordinate_dimensions = OrderedDict([(dim.name, dim) for dim in ofield.grid.dimensions])
@@ -644,7 +649,13 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
     dst_spatial_coordinate_dimensions = OrderedDict([(dim.name, dim) for dim in dst_grid.dimensions])
     # Spatial coordinate dimensions for the source grid
     src_spatial_coordinate_dimensions = OrderedDict([(dim.name, dim) for dim in source.grid.dimensions])
-    archetype = source.data_variables[0]  # Reference an archetype data variable.
+
+    try:
+        archetype = source.data_variables[0]  # Reference an archetype data variable.
+    except IndexError:
+        # There may be no data variables. Use the grid as reference instead.
+        archetype = source.grid
+
     # Extra dimensions (like time or level) to iterate over or use for ndbounds depending on the split protocol
     extra_dimensions = OrderedDict([(dim.name, dim) for dim in archetype.dimensions
                                     if dim.name not in dst_spatial_coordinate_dimensions and
@@ -828,6 +839,12 @@ def create_esmf_field(*args):
 
 
 def create_esmf_grid(filename, grid, esmf_kwargs):
+    """
+    This call is collective across the VM and must be called by each rank. The underlying call to ESMF must be using
+    the global VM.
+    """
+    from ocgis import vm
+
     filetype = grid.driver.get_esmf_fileformat()
     klass = grid.driver.get_esmf_grid_class()
 
@@ -839,15 +856,20 @@ def create_esmf_grid(filename, grid, esmf_kwargs):
             add_corner_stagger = True
 
         # If there is a spatial mask, pass this information to grid creation.
-        grid_mask = grid.get_mask()
-        if grid_mask is not None and grid_mask.any():
-            add_mask = True
-            varname = grid.mask_variable.name
-        else:
-            add_mask = False
-            varname = None
+        root = vm.get_live_ranks_from_object(grid)[0]
+        with vm.scoped_by_emptyable('masked values', grid):
+            if not vm.is_null:
+                if grid.has_masked_values_global:
+                    add_mask = True
+                    varname = grid.mask_variable.name
+                else:
+                    add_mask = False
+                    varname = None
+            else:
+                varname, add_mask = [None] * 2
+        varname = vm.bcast(varname, root=root)
+        add_mask = vm.bcast(add_mask, root=root)
 
-        raise NotImplementedError(add_mask, varname)
         ret = klass(filename=filename, filetype=filetype, add_corner_stagger=add_corner_stagger, is_sphere=False,
                     add_mask=add_mask, varname=varname)
     else:
@@ -860,7 +882,7 @@ def create_esmf_regrid(**kwargs):
     return ESMF.Regrid(**kwargs)
 
 
-def smm(index_path, wd=None):
+def smm(index_path, wd=None, data_variables=None):
     if wd is None:
         wd = ''
 
@@ -881,7 +903,7 @@ def smm(index_path, wd=None):
 
     for ii in range(src_filenames.size):
         src_path = os.path.join(wd, src_filenames[ii])
-        src_field = RequestDataset(src_path).create_field()
+        src_field = RequestDataset(src_path, variable=data_variables).create_field()
         src_field.load()
 
         dst_path = os.path.join(wd, dst_filenames[ii])
@@ -897,44 +919,3 @@ def smm(index_path, wd=None):
         ro = RegridOperation(src_field, dst_field, regrid_options=regrid_options)
         regridded = ro.execute()
         regridded.write(dst_path)
-
-    def _gc_remap_weight_variable_(self, ii, wvn, odata, src_indices, dst_indices, ifile, gidx,
-                                   split_grids_directory=None):
-        if wvn == 'S':
-            pass
-        else:
-            ifc = GridChunkerConstants.IndexFile
-            if wvn == 'row':
-                is_unstruct = isinstance(self.dst_grid, GridUnstruct)
-                if is_unstruct:
-                    dst_filename = ifile[gidx[ifc.NAME_DESTINATION_VARIABLE]].join_string_value()[ii]
-                    dst_filename = os.path.join(split_grids_directory, dst_filename)
-                    oindices = RequestDataset(dst_filename).get()[ifc.NAME_DSTIDX_GUID].get_value()
-                else:
-                    y_bounds = ifile[gidx[ifc.NAME_Y_DST_BOUNDS_VARIABLE]].get_value()
-                    x_bounds = ifile[gidx[ifc.NAME_X_DST_BOUNDS_VARIABLE]].get_value()
-                    indices = dst_indices
-
-            elif wvn == 'col':
-                is_unstruct = isinstance(self.src_grid, GridUnstruct)
-                if is_unstruct:
-                    src_filename = ifile[gidx[ifc.NAME_SOURCE_VARIABLE]].join_string_value()[ii]
-                    src_filename = os.path.join(split_grids_directory, src_filename)
-                    oindices = RequestDataset(src_filename).get()[ifc.NAME_SRCIDX_GUID].get_value()
-                else:
-                    y_bounds = ifile[gidx[ifc.NAME_Y_SRC_BOUNDS_VARIABLE]].get_value()
-                    x_bounds = ifile[gidx[ifc.NAME_X_SRC_BOUNDS_VARIABLE]].get_value()
-                    indices = src_indices
-
-            else:
-                raise NotImplementedError
-
-            if not is_unstruct:
-                islice = [slice(y_bounds[ii][0], y_bounds[ii][1]),
-                          slice(x_bounds[ii][0], x_bounds[ii][1])]
-                oindices = indices[islice]
-                oindices = oindices.flatten()
-
-            odata = oindices[odata - 1]
-
-        return odata

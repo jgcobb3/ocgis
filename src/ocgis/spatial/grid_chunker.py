@@ -338,7 +338,7 @@ class GridChunker(AbstractOcgisObject):
         out_wds.close()
 
     @staticmethod
-    def insert_weighted(index_path, dst_wd, dst_master_path):
+    def insert_weighted(index_path, dst_wd, dst_master_path, data_variables=None):
         """
         Inserted weighted, destination variable data into the master destination file.
 
@@ -346,7 +346,7 @@ class GridChunker(AbstractOcgisObject):
         :param str dst_wd: Working directory containing the destination files holding the weighted data.
         :param str dst_master_path: Path to the destination master weight file.
         """
-
+        # tdk: doc: data_variables
         if vm.size > 1:
             raise NotImplementedError('serial only')
 
@@ -364,21 +364,31 @@ class GridChunker(AbstractOcgisObject):
         x_bounds = index_field[x_bounds].get_value()
 
         joined = dst_filenames.join_string_value()
-        dst_master_field = RequestDataset(dst_master_path).get()
+        dst_master_field = RequestDataset(dst_master_path, variable=data_variables).get()
         for data_variable in dst_master_field.data_variables:
-            assert data_variable.ndim == 3
             assert not data_variable.has_allocated_value
-            for time_index in range(dst_master_field.time.shape[0]):
+            if data_variable.ndim == 3:
+                for time_index in range(dst_master_field.time.shape[0]):
+                    for vidx, source_path in enumerate(joined):
+                        source_path = os.path.join(dst_wd, source_path)
+                        slc = {dst_master_field.time.dimensions[0].name: time_index,
+                               dst_master_field.y.dimensions[0].name: slice(None),
+                               dst_master_field.x.dimensions[0].name: slice(None)}
+                        source_data = RequestDataset(source_path).get()[data_variable.name][slc]
+                        assert not source_data.has_allocated_value
+                        with nc.Dataset(dst_master_path, 'a') as ds:
+                            ds.variables[data_variable.name][time_index, y_bounds[vidx][0]:y_bounds[vidx][1],
+                            x_bounds[vidx][0]:x_bounds[vidx][1]] = source_data.get_value()
+            elif data_variable.ndim == 2:
                 for vidx, source_path in enumerate(joined):
                     source_path = os.path.join(dst_wd, source_path)
-                    slc = {dst_master_field.time.dimensions[0].name: time_index,
-                           dst_master_field.y.dimensions[0].name: slice(None),
-                           dst_master_field.x.dimensions[0].name: slice(None)}
-                    source_data = RequestDataset(source_path).get()[data_variable.name][slc]
+                    source_data = RequestDataset(source_path).get()[data_variable.name]
                     assert not source_data.has_allocated_value
                     with nc.Dataset(dst_master_path, 'a') as ds:
-                        ds.variables[data_variable.name][time_index, y_bounds[vidx][0]:y_bounds[vidx][1],
+                        ds.variables[data_variable.name][y_bounds[vidx][0]:y_bounds[vidx][1],
                         x_bounds[vidx][0]:x_bounds[vidx][1]] = source_data.get_value()
+            else:
+                raise NotImplementedError(data_variable.ndim)
 
     def iter_dst_grid_slices(self):
         """
@@ -703,6 +713,47 @@ class GridChunker(AbstractOcgisObject):
         # tdk: clean-up
         # tdk: reorder
         smm(*args, **kwargs)
+
+    def _gc_remap_weight_variable_(self, ii, wvn, odata, src_indices, dst_indices, ifile, gidx,
+                                   split_grids_directory=None):
+        if wvn == 'S':
+            pass
+        else:
+            ifc = GridChunkerConstants.IndexFile
+            if wvn == 'row':
+                is_unstruct = isinstance(self.dst_grid, GridUnstruct)
+                if is_unstruct:
+                    dst_filename = ifile[gidx[ifc.NAME_DESTINATION_VARIABLE]].join_string_value()[ii]
+                    dst_filename = os.path.join(split_grids_directory, dst_filename)
+                    oindices = RequestDataset(dst_filename).get()[ifc.NAME_DSTIDX_GUID].get_value()
+                else:
+                    y_bounds = ifile[gidx[ifc.NAME_Y_DST_BOUNDS_VARIABLE]].get_value()
+                    x_bounds = ifile[gidx[ifc.NAME_X_DST_BOUNDS_VARIABLE]].get_value()
+                    indices = dst_indices
+
+            elif wvn == 'col':
+                is_unstruct = isinstance(self.src_grid, GridUnstruct)
+                if is_unstruct:
+                    src_filename = ifile[gidx[ifc.NAME_SOURCE_VARIABLE]].join_string_value()[ii]
+                    src_filename = os.path.join(split_grids_directory, src_filename)
+                    oindices = RequestDataset(src_filename).get()[ifc.NAME_SRCIDX_GUID].get_value()
+                else:
+                    y_bounds = ifile[gidx[ifc.NAME_Y_SRC_BOUNDS_VARIABLE]].get_value()
+                    x_bounds = ifile[gidx[ifc.NAME_X_SRC_BOUNDS_VARIABLE]].get_value()
+                    indices = src_indices
+
+            else:
+                raise NotImplementedError
+
+            if not is_unstruct:
+                islice = [slice(y_bounds[ii][0], y_bounds[ii][1]),
+                          slice(x_bounds[ii][0], x_bounds[ii][1])]
+                oindices = indices[islice]
+                oindices = oindices.flatten()
+
+            odata = oindices[odata - 1]
+
+        return odata
 
 
 def does_contain(container, containee):

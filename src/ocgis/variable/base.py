@@ -72,7 +72,13 @@ class AbstractContainer(AbstractNamedObject):
         :return: A dimension dictionary containing all dimensions on associated with variables in the collection.
         :rtype: :class:`~collections.OrderedDict`
         """
+        # tdk: fix: this returns a dictionary? really?
         return self._get_dimensions_()
+
+    @property
+    def dimension_names(self):
+        # tdk: feature: this is duplicated with variable; figure out how to consolidate code
+        return tuple([d.name for d in self.dimensions])
 
     @property
     def driver(self):

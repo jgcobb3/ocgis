@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
-import click
 import logging
 import os
 import shutil
 import tempfile
-from shapely.geometry import box
 
+import click
 import ocgis
 from ocgis import RequestDataset, GeometryVariable
 from ocgis.base import grid_abstraction_scope
@@ -14,6 +13,7 @@ from ocgis.constants import DriverKey, Topology, GridChunkerConstants
 from ocgis.spatial.grid_chunker import GridChunker
 from ocgis.spatial.spatial_subset import SpatialSubsetOperation
 from ocgis.util.logging_ocgis import ocgis_lh
+from shapely.geometry import box
 
 
 @click.group()
@@ -74,9 +74,11 @@ def ocli():
 @click.option('--smm/--no_smm', default=False,
               help='If --smm, apply the weights generated during the chunking process, inserting the weighted values '
                    'into the global destination file.')
+@click.option('--data_variables', default=None, type=str,
+              help='List of comma-separated data variable names to overload auto-discovery.')
 def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, esmf_dst_type, genweights,
                 esmf_regrid_method, spatial_subset, src_resolution, dst_resolution, buffer_distance, wd, persist,
-                eager, ignore_degenerate, smm):
+                eager, ignore_degenerate, smm, data_variables):
     # tdk: doc: smm in ocli and update other documentation pages in rst files
     if not ocgis.env.USE_NETCDF4_MPI:
         msg = ('env.USE_NETCDF4_MPI is False. Considerable performance gains are possible if this is True. Is '
@@ -85,8 +87,11 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # If there is a SMM, weights must be generated, and we do not want to merge the weight files
     if smm:
-        genweights = True
         merge = False
+        persist = True
+
+    if data_variables is not None:
+        data_variables = data_variables.split(',')
 
     if nchunks_dst is not None:
         # Format the chunking decomposition from its string representation.
@@ -103,6 +108,8 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Make a temporary working directory is one is not provided by the client. Only do this if we are writing subsets
     # and it is not a merge only operation.
+    if smm and wd is None:
+        raise ValueError('The working directory "wd" is required when "smm" is true.')
     if wd is None:
         if ocgis.vm.rank == 0:
             wd = tempfile.mkdtemp(prefix='ocgis_chunked_rwg_')
@@ -116,6 +123,9 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
                 else:
                     # Make the working directory nesting as needed.
                     os.makedirs(wd)
+            else:
+                if not os.path.exists(wd):
+                    raise ValueError('Working directory "wd" must exist when "smm" is true.')
         ocgis.vm.barrier()
 
     if merge and not spatial_subset or (spatial_subset and genweights):
@@ -124,12 +134,12 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
                 'Merge weight file path must not in the working directory. It may get unintentionally deleted with the --no_persist flag.')
 
     # Create the source and destination request datasets.
-    rd_src = _create_request_dataset_(source, esmf_src_type)
+    rd_src = _create_request_dataset_(source, esmf_src_type, data_variables=data_variables)
     rd_dst = _create_request_dataset_(destination, esmf_dst_type)
 
     # Execute a spatial subset if requested.
     paths = None
-    if spatial_subset:
+    if spatial_subset and not smm:
         # TODO: This path should be customizable.
         spatial_subset_path = os.path.join(wd, 'spatial_subset.nc')
         _write_spatial_subset_(rd_src, rd_dst, spatial_subset_path)
@@ -149,23 +159,24 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Write subsets and generate weights if requested in the grid splitter.
     # TODO: Need a weight only option. If chunks are written, then weights are written...
-    # if not smm:
-    if not spatial_subset and nchunks_dst is not None:
-        gs.write_chunks()
-    else:
-        if spatial_subset:
-            source = spatial_subset_path
-        if genweights:
-            gs.write_esmf_weights(source, destination, weight)
+    if not smm:
+        if not spatial_subset and nchunks_dst is not None:
+            gs.write_chunks()
+        else:
+            if spatial_subset:
+                source = spatial_subset_path
+            if genweights:
+                gs.write_esmf_weights(source, destination, weight)
 
     # Apply the sparse matrix multiplication
-    # if smm:
-    #     index_path = os.path.join(wd, gs.paths['index_file'])
-    #     GridChunker.smm(index_path, wd)
-    #     with ocgis.vm.scoped(['insert weighted'], [0]):
-    #         if not ocgis.vm.is_null:
-    #             gs.insert_weighted(index_path, wd, rd_dst.uri)
-    #     ocgis.vm.barrier()
+    if smm:
+        index_path = os.path.join(wd, gs.paths['index_file'])
+        GridChunker.smm(index_path, wd, data_variables=data_variables)
+        with ocgis.vm.scoped('insert weighted', [0]):
+            # tdk: need an insert weighted option
+            if not ocgis.vm.is_null:
+                gs.insert_weighted(index_path, wd, rd_dst.uri, data_variables=data_variables)
+        ocgis.vm.barrier()
 
     # Create the global weight file. This does not apply to spatial subsets because there will always be one weight
     # file.
@@ -192,12 +203,13 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
     return 0
 
 
-def _create_request_dataset_(path, esmf_type):
+def _create_request_dataset_(path, esmf_type, data_variables=None):
     edmap = {'GRIDSPEC': DriverKey.NETCDF_CF,
              'UGRID': DriverKey.NETCDF_UGRID,
              'SCRIP': DriverKey.NETCDF_SCRIP}
     odriver = edmap[esmf_type]
-    return RequestDataset(uri=path, driver=odriver, grid_abstraction='point')
+    # tdk: feature: 'auto' should be used for variable as None will have an actual meaning
+    return RequestDataset(uri=path, driver=odriver, grid_abstraction='point', variable=data_variables)
 
 
 def _is_subdir_(path, potential_subpath):
