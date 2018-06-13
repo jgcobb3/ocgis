@@ -149,23 +149,23 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Write subsets and generate weights if requested in the grid splitter.
     # TODO: Need a weight only option. If chunks are written, then weights are written...
-    if not smm:
-        if not spatial_subset and nchunks_dst is not None:
-            gs.write_chunks()
-        else:
-            if spatial_subset:
-                source = spatial_subset_path
-            if genweights:
-                gs.write_esmf_weights(source, destination, weight)
+    # if not smm:
+    if not spatial_subset and nchunks_dst is not None:
+        gs.write_chunks()
+    else:
+        if spatial_subset:
+            source = spatial_subset_path
+        if genweights:
+            gs.write_esmf_weights(source, destination, weight)
 
     # Apply the sparse matrix multiplication
-    if smm:
-        index_path = os.path.join(wd, gs.paths['index_file'])
-        GridChunker.smm(index_path, wd)
-        with ocgis.vm.scoped(['insert weighted'], [0]):
-            if not ocgis.vm.is_null:
-                gs.insert_weighted(index_path, wd, rd_dst.uri)
-        ocgis.vm.barrier()
+    # if smm:
+    #     index_path = os.path.join(wd, gs.paths['index_file'])
+    #     GridChunker.smm(index_path, wd)
+    #     with ocgis.vm.scoped(['insert weighted'], [0]):
+    #         if not ocgis.vm.is_null:
+    #             gs.insert_weighted(index_path, wd, rd_dst.uri)
+    #     ocgis.vm.barrier()
 
     # Create the global weight file. This does not apply to spatial subsets because there will always be one weight
     # file.

@@ -1,10 +1,10 @@
+import ESMF
 import logging
+import numpy as np
 import os
 from collections import OrderedDict
 from copy import deepcopy
 
-import ESMF
-import numpy as np
 from ocgis import constants, Dimension, RequestDataset, GridUnstruct
 from ocgis import env
 from ocgis.base import AbstractOcgisObject, get_dimension_names, iter_dict_slices
@@ -847,6 +847,7 @@ def create_esmf_grid(filename, grid, esmf_kwargs):
             add_mask = False
             varname = None
 
+        raise NotImplementedError(add_mask, varname)
         ret = klass(filename=filename, filetype=filetype, add_corner_stagger=add_corner_stagger, is_sphere=False,
                     add_mask=add_mask, varname=varname)
     else:
