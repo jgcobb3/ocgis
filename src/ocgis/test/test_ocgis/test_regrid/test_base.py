@@ -1,7 +1,7 @@
-import numpy as np
 from copy import deepcopy
 
-from ocgis import OcgOperations
+import numpy as np
+from ocgis import OcgOperations, vm
 from ocgis import RequestDataset
 from ocgis import Variable
 from ocgis.collection.field import Field
@@ -480,3 +480,44 @@ class TestRegridOperation(AbstractTestInterface):
                 #     print 'actual.mean()', actual.mean()
                 #
                 #     print np.max(np.abs(actual - desired))
+
+    @attr('slow', 'esmf', 'mpi')
+    def test_system_masking_with_smm(self):
+        """Test masking with sparse matrix multiplication."""
+
+        from ocgis.regrid import RegridOperation
+
+        grid = create_gridxy_global(with_bounds=False, crs=Spherical(), dist_dimname='x')
+        src_field = create_exact_field(grid, 'exact', ntime=3)
+
+        # np.random.seed(1)
+        mask = src_field.grid.get_mask(create=True)
+        # rnum = np.random.rand(*mask.shape)
+        # sel = rnum > 0.95
+        # mask[sel] = True
+        mask[0:2, :] = True
+        mask[:, -2:] = True
+        mask[-2:, :] = True
+        mask[:, 0:2] = True
+        src_field.grid.set_mask(mask, cascade=True)
+        src_field['exact'].set_value(src_field['exact'].mv().filled())
+
+        dst_field = deepcopy(src_field)
+        dst_field.remove_variable('exact')
+
+        if vm.rank == 0:
+            weights = self.get_temporary_file_path('weights.nc')
+        else:
+            weights = None
+        weights = vm.bcast(weights)
+
+        ro = RegridOperation(src_field, dst_field, regrid_options={'weights_out': weights, 'split': False})
+        _ = ro.execute()
+
+        # tdk: fix: fails when split=False
+        ro2 = RegridOperation(src_field, dst_field, regrid_options={'weights_in': weights, 'split': True})
+        result = ro2.execute()
+
+        actual = result['exact'].mv()
+        desired = src_field['exact'].mv()
+        self.assertNumpyAllClose(actual, desired)

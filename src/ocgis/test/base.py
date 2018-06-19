@@ -17,10 +17,6 @@ import fiona
 import netCDF4 as nc
 import numpy as np
 import six
-from shapely import wkt
-from shapely.geometry import Point
-from shapely.geometry.base import BaseMultipartGeometry
-
 from ocgis import RequestDataset
 from ocgis import SourcedVariable
 from ocgis import Variable, Dimension
@@ -36,6 +32,9 @@ from ocgis.variable.crs import CoordinateReferenceSystem
 from ocgis.variable.geom import GeometryVariable
 from ocgis.variable.temporal import TemporalVariable
 from ocgis.vmachine.mpi import get_standard_comm_state, OcgDist, MPI_RANK, variable_scatter, variable_collection_scatter
+from shapely import wkt
+from shapely.geometry import Point
+from shapely.geometry.base import BaseMultipartGeometry
 
 """
 Definitions for various "attrs":
@@ -1313,7 +1312,8 @@ def create_exact_field(grid, data_varname, ntime=1, fill_data_var=True, crs='aut
     return field
 
 
-def create_gridxy_global(resolution=1.0, with_bounds=True, wrapped=True, crs=None, dtype=None, dist=True):
+def create_gridxy_global(resolution=1.0, with_bounds=True, wrapped=True, crs=None, dtype=None, dist=True,
+                         dist_dimname='y'):
     half_resolution = 0.5 * resolution
     y = np.arange(-90.0 + half_resolution, 90.0, resolution)
     if wrapped:
@@ -1323,8 +1323,18 @@ def create_gridxy_global(resolution=1.0, with_bounds=True, wrapped=True, crs=Non
 
     if dist:
         ompi = OcgDist()
-        ompi.create_dimension('x', x.shape[0], dist=False)
-        ompi.create_dimension('y', y.shape[0], dist=True)
+
+        if dist_dimname == 'x':
+            ldist = True
+        else:
+            ldist = False
+        ompi.create_dimension('x', x.shape[0], dist=ldist)
+
+        if dist_dimname == 'y':
+            ldist = True
+        else:
+            ldist = False
+        ompi.create_dimension('y', y.shape[0], dist=ldist)
         ompi.update_dimension_bounds()
 
     if MPI_RANK == 0:
