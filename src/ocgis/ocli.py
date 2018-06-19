@@ -7,7 +7,7 @@ import tempfile
 
 import click
 import ocgis
-from ocgis import RequestDataset, GeometryVariable
+from ocgis import RequestDataset, GeometryVariable, constants
 from ocgis.base import grid_abstraction_scope
 from ocgis.constants import DriverKey, Topology, GridChunkerConstants
 from ocgis.spatial.grid_chunker import GridChunker
@@ -71,24 +71,15 @@ def ocli():
 @click.option('--ignore_degenerate/--no_ignore_degenerate', default=False,
               help='(default=no_ignore_degenerate) If --ignore_degenerate, skip degenerate coordinates when regridding '
                    'and do not raise an exception.')
-@click.option('--smm/--no_smm', default=False,
-              help='If --smm, apply the weights generated during the chunking process, inserting the weighted values '
-                   'into the global destination file.')
 @click.option('--data_variables', default=None, type=str,
               help='List of comma-separated data variable names to overload auto-discovery.')
 def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, esmf_dst_type, genweights,
                 esmf_regrid_method, spatial_subset, src_resolution, dst_resolution, buffer_distance, wd, persist,
-                eager, ignore_degenerate, smm, data_variables):
-    # tdk: doc: smm in ocli and update other documentation pages in rst files
+                eager, ignore_degenerate, data_variables):
     if not ocgis.env.USE_NETCDF4_MPI:
         msg = ('env.USE_NETCDF4_MPI is False. Considerable performance gains are possible if this is True. Is '
                'netCDF4-python built with parallel support?')
         ocgis_lh(msg, level=logging.WARN, logger='ocli.chunked_rwg', force=True)
-
-    # If there is a SMM, weights must be generated, and we do not want to merge the weight files
-    if smm:
-        merge = False
-        persist = True
 
     if data_variables is not None:
         data_variables = data_variables.split(',')
@@ -108,8 +99,6 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Make a temporary working directory is one is not provided by the client. Only do this if we are writing subsets
     # and it is not a merge only operation.
-    if smm and wd is None:
-        raise ValueError('The working directory "wd" is required when "smm" is true.')
     if wd is None:
         if ocgis.vm.rank == 0:
             wd = tempfile.mkdtemp(prefix='ocgis_chunked_rwg_')
@@ -117,15 +106,11 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
     else:
         if ocgis.vm.rank == 0:
             # The working directory must not exist to proceed.
-            if not smm:
-                if os.path.exists(wd):
-                    raise ValueError("Working directory 'wd' must not exist.")
-                else:
-                    # Make the working directory nesting as needed.
-                    os.makedirs(wd)
+            if os.path.exists(wd):
+                raise ValueError("Working directory 'wd' must not exist.")
             else:
-                if not os.path.exists(wd):
-                    raise ValueError('Working directory "wd" must exist when "smm" is true.')
+                # Make the working directory nesting as needed.
+                os.makedirs(wd)
         ocgis.vm.barrier()
 
     if merge and not spatial_subset or (spatial_subset and genweights):
@@ -159,24 +144,13 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Write subsets and generate weights if requested in the grid splitter.
     # TODO: Need a weight only option. If chunks are written, then weights are written...
-    if not smm:
-        if not spatial_subset and nchunks_dst is not None:
-            gs.write_chunks()
-        else:
-            if spatial_subset:
-                source = spatial_subset_path
-            if genweights:
-                gs.write_esmf_weights(source, destination, weight)
-
-    # Apply the sparse matrix multiplication
-    if smm:
-        index_path = os.path.join(wd, gs.paths['index_file'])
-        GridChunker.smm(index_path, wd, data_variables=data_variables)
-        with ocgis.vm.scoped('insert weighted', [0]):
-            # tdk: need an insert weighted option
-            if not ocgis.vm.is_null:
-                gs.insert_weighted(index_path, wd, rd_dst.uri, data_variables=data_variables)
-        ocgis.vm.barrier()
+    if not spatial_subset and nchunks_dst is not None:
+        gs.write_chunks()
+    else:
+        if spatial_subset:
+            source = spatial_subset_path
+        if genweights:
+            gs.write_esmf_weights(source, destination, weight)
 
     # Create the global weight file. This does not apply to spatial subsets because there will always be one weight
     # file.
@@ -204,9 +178,9 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
 
 @ocli.command(help='Apply weights in chunked files with an option to insert the global data.')
-@click.option('--wd', type=click.Path(exists=True, dir_okay=True), required=True,
-              help="Optional working directory for intermediate chunk files. Creates a directory in the system's "
-                   "temporary scratch space if not provided.")
+@click.option('--wd', type=click.Path(exists=True, dir_okay=True), required=False,
+              help="Optional working directory for intermediate chunk files. If empty, the current working directory is"
+                   "used.")
 @click.option('--index_path', required=False, type=click.Path(exists=True, dir_okay=False),
               help='Path grid chunker index file. If not provided, it will assume the default name in the working '
                    'directory.')
@@ -217,7 +191,29 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 @click.option('--data_variables', default=None, type=str,
               help='List of comma-separated data variable names to overload auto-discovery.')
 def chunked_smm(wd, index_path, insert_weighted, destination, data_variables):
-    pass
+    # tdk: doc in rst
+
+    if wd is None:
+        wd = os.getcwd()
+
+    if data_variables is not None:
+        data_variables = data_variables.split(',')
+
+    if index_path is None:
+        index_path = os.path.join(wd, constants.GridChunkerConstants.DEFAULT_PATHS['index_file'])
+        assert os.path.exists(index_path)
+
+    if insert_weighted:
+        if destination is None:
+            raise ValueError('If --insert_weighted, then "destination" must be provided.')
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    GridChunker.smm(index_path, wd, data_variables=data_variables)
+    with ocgis.vm.scoped_barrier(first=True, last=True):
+        with ocgis.vm.scoped('insert weighted', [0]):
+            if not ocgis.vm.is_null:
+                GridChunker.insert_weighted(index_path, wd, destination, data_variables=data_variables)
 
 
 def _create_request_dataset_(path, esmf_type, data_variables=None):

@@ -190,12 +190,26 @@ class OcgVM(AbstractOcgisObject):
     def scoped(self, *args, **kwargs):
         return vm_scope(self, *args, **kwargs)
 
+    def scoped_barrier(self, **kwargs):
+        return vm_scoped_barrier(self, **kwargs)
+
     def scoped_by_emptyable(self, name, emptyable):
         live_ranks = self.get_live_ranks_from_object(emptyable)
         return self.scoped(name, live_ranks)
 
     def scoped_by_name(self, name):
         return vm_scoped_by_name(self, name)
+
+
+@contextmanager
+def vm_scoped_barrier(vm_obj, first=True, last=True):
+    if first:
+        vm_obj.barrier()
+    try:
+        yield vm_obj
+    finally:
+        if last:
+            vm_obj.barrier()
 
 
 @contextmanager

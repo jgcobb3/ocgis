@@ -499,6 +499,10 @@ class ConversionTarget(Enum):
 
 class GridChunkerConstants(object):
     BUFFER_RESOLUTION_MODIFIER = 2.
+    DEFAULT_PATHS = {'dst_template': 'split_dst_{}.nc',
+                     'src_template': 'split_src_{}.nc',
+                     'wgt_template': 'esmf_weights_{}.nc',
+                     'index_file': '01-split_index.nc'}
 
     class IndexFile(object):
         NAME_DESTINATION_VARIABLE = 'grid_chunker_destination'

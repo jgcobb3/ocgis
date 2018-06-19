@@ -365,6 +365,9 @@ def get_esmf_grid(ogrid, regrid_method='auto', value_mask=None):
     pkwds['max_index'] = max_index
     egrid = ESMF.Grid(**pkwds)
 
+    # msg = (egrid.lower_bounds, egrid.upper_bounds)
+    # ocgis_lh(msg, level=logging.WARN, logger='ocli.chunked_rwg', force=True)
+
     egrid._ocgis['dimnames'] = (x_dimension.name, y_dimension.name)
     egrid._ocgis['dimnames_backref'] = get_dimension_names(ogrid.dimensions)
     egrid._ocgis['dimension_map'] = deepcopy(ogrid.dimension_map)

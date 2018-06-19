@@ -3,6 +3,7 @@ import os
 
 import netCDF4 as nc
 import numpy as np
+from ocgis import constants
 from ocgis.base import AbstractOcgisObject, grid_abstraction_scope
 from ocgis.collection.field import Field
 from ocgis.constants import GridChunkerConstants, RegriddingRole, Topology
@@ -134,10 +135,7 @@ class GridChunker(AbstractOcgisObject):
         self.dst_grid._gc_initialize_(RegriddingRole.DESTINATION)
 
         # Construct default paths if None are provided.
-        defaults = {'dst_template': 'split_dst_{}.nc',
-                    'src_template': 'split_src_{}.nc',
-                    'wgt_template': 'esmf_weights_{}.nc',
-                    'index_file': '01-split_index.nc'}
+        defaults = constants.GridChunkerConstants.DEFAULT_PATHS
         if paths is None:
             paths = defaults
         else:
