@@ -490,11 +490,7 @@ class TestRegridOperation(AbstractTestInterface):
         grid = create_gridxy_global(with_bounds=False, crs=Spherical(), dist_dimname='x')
         src_field = create_exact_field(grid, 'exact', ntime=3)
 
-        # np.random.seed(1)
         mask = src_field.grid.get_mask(create=True)
-        # rnum = np.random.rand(*mask.shape)
-        # sel = rnum > 0.95
-        # mask[sel] = True
         mask[0:2, :] = True
         mask[:, -2:] = True
         mask[-2:, :] = True
