@@ -203,6 +203,23 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
     return 0
 
 
+@ocli.command(help='Apply weights in chunked files with an option to insert the global data.')
+@click.option('--wd', type=click.Path(exists=True, dir_okay=True), required=True,
+              help="Optional working directory for intermediate chunk files. Creates a directory in the system's "
+                   "temporary scratch space if not provided.")
+@click.option('--index_path', required=False, type=click.Path(exists=True, dir_okay=False),
+              help='Path grid chunker index file. If not provided, it will assume the default name in the working '
+                   'directory.')
+@click.option('--insert_weighted/--no_inserted_weighted', default=False, required=False,
+              help='If --insert_weighted, insert the weighted data back into the global destination file.')
+@click.option('-d', '--destination', required=False, type=click.Path(exists=True, dir_okay=False),
+              help='Path to the destination grid NetCDF file. Needed if using --insert_weighted.')
+@click.option('--data_variables', default=None, type=str,
+              help='List of comma-separated data variable names to overload auto-discovery.')
+def chunked_smm(wd, index_path, insert_weighted, destination, data_variables):
+    pass
+
+
 def _create_request_dataset_(path, esmf_type, data_variables=None):
     edmap = {'GRIDSPEC': DriverKey.NETCDF_CF,
              'UGRID': DriverKey.NETCDF_UGRID,
