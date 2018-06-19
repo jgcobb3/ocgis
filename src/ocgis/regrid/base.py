@@ -733,10 +733,8 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
         if build:  # Only create the regrid object once. It may be reused if split=True.
             if weights_in is None:
                 if weights_out is None:
-                    filename = None
                     create_rh = False
                 else:
-                    filename = weights_out
                     create_rh = True
                 # Create the weights and ESMF route handle from the grids
                 regrid = ESMF.Regrid(src_efield, dst_efield, unmapped_action=ESMF.UnmappedAction.IGNORE,
