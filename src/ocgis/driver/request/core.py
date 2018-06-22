@@ -1,13 +1,12 @@
 import logging
 import os
 import re
-from copy import deepcopy
-
 import six
+from copy import deepcopy
 
 from ocgis import constants
 from ocgis import env
-from ocgis.constants import DMK, DriverKey
+from ocgis.constants import DMK, DriverKey, DecompositionType
 from ocgis.driver.dimension_map import DimensionMap
 from ocgis.driver.registry import get_driver_class, driver_registry
 from ocgis.driver.request.base import AbstractRequestObject
@@ -142,7 +141,8 @@ class RequestDataset(AbstractRequestObject):
                  t_calendar=None, t_conform_units_to=None, grid_abstraction='auto', grid_is_isomorphic='auto',
                  dimension_map=None, field_name=None, driver=None, regrid_source=True, regrid_destination=False,
                  metadata=None, format_time=True, opened=None, uid=None, rename_variable=None, predicate=None,
-                 rotated_pole_priority=False, driver_kwargs=None):
+                 rotated_pole_priority=False, driver_kwargs=None, decomp_type=DecompositionType.OCGIS):
+        # tdk: doc decomp_type
         self._is_init = True
 
         self._field_name = field_name
@@ -151,6 +151,8 @@ class RequestDataset(AbstractRequestObject):
         self._time_region = None
         self._time_subset_func = None
         self._driver_kwargs = driver_kwargs
+
+        self.decomp_type = decomp_type
 
         if rename_variable is not None:
             rename_variable = get_tuple(rename_variable)

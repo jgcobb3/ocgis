@@ -1,19 +1,20 @@
 #!/usr/bin/env python
 
+import click
 import logging
 import os
 import shutil
+import sys
 import tempfile
+from shapely.geometry import box
 
-import click
 import ocgis
 from ocgis import RequestDataset, GeometryVariable, constants
 from ocgis.base import grid_abstraction_scope
-from ocgis.constants import DriverKey, Topology, GridChunkerConstants
+from ocgis.constants import DriverKey, Topology, GridChunkerConstants, DecompositionType
 from ocgis.spatial.grid_chunker import GridChunker
 from ocgis.spatial.spatial_subset import SpatialSubsetOperation
 from ocgis.util.logging_ocgis import ocgis_lh
-from shapely.geometry import box
 
 
 @click.group()
@@ -104,14 +105,17 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
             wd = tempfile.mkdtemp(prefix='ocgis_chunked_rwg_')
         wd = ocgis.vm.bcast(wd)
     else:
+        exc = None
         if ocgis.vm.rank == 0:
             # The working directory must not exist to proceed.
             if os.path.exists(wd):
-                raise ValueError("Working directory 'wd' must not exist.")
+                exc = ValueError("Working directory 'wd' must not exist.")
             else:
                 # Make the working directory nesting as needed.
                 os.makedirs(wd)
-        ocgis.vm.barrier()
+        exc = ocgis.vm.bcast(exc)
+        if exc is not None:
+            raise exc
 
     if merge and not spatial_subset or (spatial_subset and genweights):
         if _is_subdir_(wd, weight):
@@ -201,6 +205,7 @@ def chunked_smm(wd, index_path, insert_weighted, destination, data_variables):
 
     if index_path is None:
         index_path = os.path.join(wd, constants.GridChunkerConstants.DEFAULT_PATHS['index_file'])
+        ocgis.vm.barrier()
         assert os.path.exists(index_path)
 
     if insert_weighted:
@@ -222,7 +227,8 @@ def _create_request_dataset_(path, esmf_type, data_variables=None):
              'SCRIP': DriverKey.NETCDF_SCRIP}
     odriver = edmap[esmf_type]
     # tdk: feature: 'auto' should be used for variable as None will have an actual meaning
-    return RequestDataset(uri=path, driver=odriver, grid_abstraction='point', variable=data_variables)
+    return RequestDataset(uri=path, driver=odriver, grid_abstraction='point', variable=data_variables,
+                          decomp_type=DecompositionType.ESMF)
 
 
 def _is_subdir_(path, potential_subpath):

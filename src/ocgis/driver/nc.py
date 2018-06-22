@@ -1,18 +1,20 @@
 import itertools
 import logging
+import netCDF4 as nc
+import numpy as np
+import os
+import six
 from abc import ABCMeta
 from collections import OrderedDict
 from copy import deepcopy
-
-import netCDF4 as nc
-import numpy as np
-import six
 from netCDF4._netCDF4 import VLType, MFDataset, MFTime
+
 from ocgis import constants, vm
 from ocgis import env
 from ocgis.base import orphaned, raise_if_empty
 from ocgis.collection.field import Field
-from ocgis.constants import MPIWriteMode, DimensionMapKey, KeywordArgument, DriverKey, CFName, SourceIndexType
+from ocgis.constants import MPIWriteMode, DimensionMapKey, KeywordArgument, DriverKey, CFName, SourceIndexType, \
+    DecompositionType
 from ocgis.driver.base import AbstractDriver, driver_scope
 from ocgis.exc import ProjectionDoesNotMatch, PayloadProtectedError, NoDataVariablesFound, \
     GridDeficientError
@@ -259,7 +261,9 @@ class DriverNetcdf(AbstractDriver):
                         kwargs['parallel'] = True
                     if kwargs.get('parallel') and kwargs.get('comm') is None:
                         kwargs['comm'] = lvm.comm
+            print('kwargs', kwargs, 'uri', uri, 'mode', mode, 'exists', os.path.exists(uri))
             ret = nc.Dataset(uri, mode=mode, **kwargs)
+            print('ret.data_model', ret.data_model)
         else:
             ret = nc.MFDataset(uri, **kwargs)
 
@@ -415,19 +419,23 @@ class DriverNetcdfCF(AbstractDriverNetcdfCF):
 
         return tuple(dvars)
 
-    def get_distributed_dimension_name(self, dimension_map, dimensions_metadata):
+    def get_distributed_dimension_name(self, dimension_map, dimensions_metadata, decomp_type=DecompositionType.OCGIS):
         x_variable = dimension_map.get_variable(DimensionMapKey.X)
         y_variable = dimension_map.get_variable(DimensionMapKey.Y)
         if x_variable and y_variable:
-            sizes = np.zeros(2, dtype={'names': ['dim', 'size'], 'formats': [object, int]})
-
             dimension_name_x = dimension_map.get_dimension(DimensionMapKey.X)[0]
-            dimension_name_y = dimension_map.get_dimension(DimensionMapKey.Y)[0]
+            if decomp_type == DecompositionType.OCGIS:
+                dimension_name_y = dimension_map.get_dimension(DimensionMapKey.Y)[0]
+                sizes = np.zeros(2, dtype={'names': ['dim', 'size'], 'formats': [object, int]})
 
-            sizes[0] = (dimension_name_x, dimensions_metadata[dimension_name_x]['size'])
-            sizes[1] = (dimension_name_y, dimensions_metadata[dimension_name_y]['size'])
-            max_index = np.argmax(sizes['size'])
-            ret = sizes['dim'][max_index]
+                sizes[0] = (dimension_name_x, dimensions_metadata[dimension_name_x]['size'])
+                sizes[1] = (dimension_name_y, dimensions_metadata[dimension_name_y]['size'])
+                max_index = np.argmax(sizes['size'])
+                ret = sizes['dim'][max_index]
+            elif decomp_type == DecompositionType.ESMF:
+                ret = dimension_name_x
+            else:
+                raise NotImplementedError(decomp_type)
         else:
             ret = None
         return ret

@@ -1,12 +1,12 @@
 import abc
 import json
+import numpy as np
+import six
 from abc import ABCMeta
 from contextlib import contextmanager
 from copy import deepcopy
 from warnings import warn
 
-import numpy as np
-import six
 from ocgis import constants, GridUnstruct
 from ocgis import vm
 from ocgis.base import AbstractOcgisObject, raise_if_empty
@@ -216,7 +216,8 @@ class AbstractDriver(AbstractOcgisObject):
 
                 # dimension_map = get_group(self.rd.dimension_map, group_index, has_root=False)
                 distributed_dimension_name = self.get_distributed_dimension_name(dimension_map,
-                                                                                 group_meta['dimensions'])
+                                                                                 group_meta['dimensions'],
+                                                                                 decomp_type=self.rd.decomp_type)
                 # Allow no distributed dimensions to be returned.
                 if distributed_dimension_name is not None:
                     for target_rank in range(ompi.size):

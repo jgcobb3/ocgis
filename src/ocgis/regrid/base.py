@@ -1,15 +1,15 @@
+import ESMF
 import logging
+import numpy as np
 import os
 from collections import OrderedDict
 from copy import deepcopy
 
-import ESMF
-import numpy as np
 from ocgis import constants, Dimension, RequestDataset
 from ocgis import env
 from ocgis.base import AbstractOcgisObject, get_dimension_names, iter_dict_slices
 from ocgis.collection.field import Field
-from ocgis.constants import DMK, GridChunkerConstants
+from ocgis.constants import DMK, GridChunkerConstants, DecompositionType
 from ocgis.exc import RegriddingError, CornersInconsistentError
 from ocgis.spatial.grid import Grid, expand_grid
 from ocgis.spatial.spatial_subset import SpatialSubsetOperation
@@ -18,6 +18,9 @@ from ocgis.util.helpers import get_esmf_corners_from_ocgis_corners, create_ocgis
 from ocgis.util.logging_ocgis import ocgis_lh
 from ocgis.variable.base import Variable
 from ocgis.variable.crs import Spherical, create_crs
+
+# tdk: remove
+ESMF.Manager(debug=True)
 
 
 class RegridOperation(AbstractOcgisObject):
@@ -918,11 +921,11 @@ def smm(index_path, wd=None, data_variables=None):
 
     for ii in range(src_filenames.size):
         src_path = os.path.join(wd, src_filenames[ii])
-        src_field = RequestDataset(src_path, variable=data_variables).create_field()
+        src_field = RequestDataset(src_path, variable=data_variables, decomp_type=DecompositionType.ESMF).create_field()
         src_field.load()
 
         dst_path = os.path.join(wd, dst_filenames[ii])
-        dst_field = RequestDataset(dst_path).create_field()
+        dst_field = RequestDataset(dst_path, decomp_type=DecompositionType.ESMF).create_field()
         dst_field.load()
 
         from ocgis.regrid.base import RegridOperation

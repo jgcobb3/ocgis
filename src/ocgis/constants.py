@@ -1,6 +1,6 @@
+import numpy as np
 from collections import OrderedDict
 
-import numpy as np
 from ocgis.util.enum import Enum, IntEnum
 
 UNINITIALIZED = -999
@@ -420,6 +420,11 @@ class MPITag(IntEnum):
     ARANGE_FROM_DIMENSION = 10
     START_INDEX = 11
     SELECT_SEND_SIZE = 12
+
+
+class DecompositionType(IntEnum):
+    OCGIS = 0
+    ESMF = 1
 
 
 class CFName(object):
