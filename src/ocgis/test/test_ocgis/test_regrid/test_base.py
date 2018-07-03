@@ -90,6 +90,37 @@ class TestRegrid(TestSimpleBase):
             self.assertAlmostEqual(0.0, np.abs(desired_value - actual_value).max())
 
     @attr('esmf')
+    def test_system_weights(self):
+        # tdk: remove or finish test
+        from ocgis.regrid import RegridOperation
+
+        self.remove_dir = False
+
+        x_src = Variable(name='x', value=[-120., -110., -100., -90.], dimensions='xc')
+        y_src = Variable(name='y', value=[20., 30., 40., 50.], dimensions='yc')
+        src_grid = Grid(x_src, y_src, crs=Spherical())
+        src_field = create_exact_field(src_grid, 'foo')
+        src_grid_mask = src_grid.get_mask(create=True)
+        src_grid_mask[1, 1] = True
+        src_field.grid.set_mask(src_grid_mask)
+
+        src_path = '/home/benkoziol/Dropbox/dtmp/src_grid.shp'
+        src_field.grid.get_abstraction_geometry().write_vector(src_path)
+
+        x_dst = Variable(name='x', value=[-115., -105., -95.], dimensions='xc')
+        y_dst = Variable(name='y', value=[25., 35., 45.], dimensions='yc')
+        dst_grid = Grid(x_dst, y_dst, crs=Spherical())
+        dst_field = create_exact_field(dst_grid, 'foo')
+        dst_field.grid.get_abstraction_geometry().write_vector('/home/benkoziol/Dropbox/dtmp/dst_grid.shp')
+
+        path = self.get_temporary_file_path('weights.nc')
+        options = {'weights_out': path}
+        ro = RegridOperation(src_field, dst_field, regrid_options=options)
+        res = ro.execute()
+
+        self.ncdump(path, header_only=False)
+
+    @attr('esmf')
     def test_check_fields_for_regridding(self):
         from ESMF import RegridMethod
         from ocgis.regrid.base import check_fields_for_regridding

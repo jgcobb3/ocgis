@@ -736,6 +736,7 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
 
         # Construct the regrid object. Weight generation actually occurs in this call.
         ocgis_lh(logger='iter_regridded_fields', msg='before ESMF.Regrid', level=logging.DEBUG)
+
         if build:  # Only create the regrid object once. It may be reused if split=True.
             if weights_in is None:
                 if weights_out is None:
@@ -753,7 +754,7 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
         ocgis_lh(logger='iter_regridded_fields', msg='after ESMF.Regrid', level=logging.DEBUG)
 
         # If we are just writing the weights file, bail out after it is written.
-        if weights_out:
+        if weights_out is not None:
             destroy_esmf_objects([regrid, src_efield, dst_efield, esmf_destination_grid])
             return
 
@@ -800,7 +801,10 @@ def regrid_field(source, destination, regrid_method='auto', value_mask=None, spl
             regridded_source.add_variable(v, is_data=True, force=True)
 
     # Destroy ESMF objects.
-    destroy_esmf_objects([regrid, dst_efield, src_efield, esmf_destination_grid])
+    if weights_out is None:
+        destroy_esmf_objects([regrid, dst_efield, src_efield, esmf_destination_grid])
+    else:
+        destroy_esmf_objects([dst_efield, src_efield, esmf_destination_grid])
 
     # Broadcast ESMF (Fortran) ordering to Python (C) ordering.
     dst_names = [dim.name for dim in new_dimensions]
