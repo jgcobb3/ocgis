@@ -154,7 +154,7 @@ class DriverNetcdf(AbstractDriver):
                             try:
                                 curr_value = data_value[idx - fill_slice[0].start]
                             except Exception as e:
-                                msg = "Variable name is '{}'. Original message: ".format(var.name) + e.message
+                                msg = "Variable name is '{}'. Original message: ".format(var.name) + str(e)
                                 raise e.__class__(msg)
                             for sidx, sval in enumerate(curr_value):
                                 ncvar[idx, sidx] = sval
@@ -164,7 +164,7 @@ class DriverNetcdf(AbstractDriver):
                         try:
                             ncvar.__setitem__(fill_slice, data_value)
                         except Exception as e:
-                            msg = "Variable name is '{}'. Original message: ".format(var.name) + e.message
+                            msg = "Variable name is '{}'. Original message: ".format(var.name) + str(e)
                             raise e.__class__(msg)
 
         # Only set variable attributes if this is not a fill operation.
@@ -450,7 +450,7 @@ class DriverNetcdfCF(AbstractDriverNetcdfCF):
         return ret
 
     @staticmethod
-    def _gc_iter_dst_grid_slices_(grid_chunker):
+    def _gc_iter_dst_grid_slices_(grid_chunker, yield_idx=None):
         slice_store = []
         ydim_name = grid_chunker.dst_grid.dimensions[0].name
         xdim_name = grid_chunker.dst_grid.dimensions[1].name
@@ -460,7 +460,12 @@ class DriverNetcdfCF(AbstractDriverNetcdfCF):
             size = dst_grid_shape_global[idx]
             slices = create_slices_for_dimension(size, splits)
             slice_store.append(slices)
-        for slice_y, slice_x in itertools.product(*slice_store):
+        for ctr, (slice_y, slice_x) in enumerate(itertools.product(*slice_store)):
+            if yield_idx is not None and yield_idx != ctr:
+                if ctr > yield_idx:
+                    break
+                else:
+                    continue
             yield {ydim_name: create_slice_from_tuple(slice_y),
                    xdim_name: create_slice_from_tuple(slice_x)}
 
@@ -843,9 +848,14 @@ def update_group_metadata(rootgrp, fill):
                 except AttributeError:
                     fill_value = 'auto'
 
+        if isinstance(value.datatype, VLType):
+            the_dtype = ObjectType(value.dtype)
+        else:
+            the_dtype = value.dtype
+
         variables.update({key: {'dimensions': value.dimensions,
                                 'attrs': subvar,
-                                'dtype': value.dtype,
+                                'dtype': the_dtype,
                                 'name': value._name,
                                 'fill_value': fill_value,
                                 'dtype_packed': dtype_packed,
