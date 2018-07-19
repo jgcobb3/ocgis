@@ -362,7 +362,7 @@ def get_esmf_grid(ogrid, regrid_method='auto', value_mask=None):
     x_dimension = get_dimension(DMK.X, dimensions=dimensions)
 
     # ESMPy has index 0 = x-coordinate and index 1 = y-coordinate.
-    max_index = np.array([x_dimension.size_global, y_dimension.size_global], dtype=np.int32)
+    max_index = np.array([x_dimension.size, y_dimension.size], dtype=np.int32)
     pkwds['coord_sys'] = ESMF.CoordSys.SPH_DEG
     pkwds['staggerloc'] = ESMF.StaggerLoc.CENTER
     pkwds['max_index'] = max_index
