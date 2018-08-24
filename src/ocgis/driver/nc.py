@@ -261,9 +261,8 @@ class DriverNetcdf(AbstractDriver):
                         kwargs['parallel'] = True
                     if kwargs.get('parallel') and kwargs.get('comm') is None:
                         kwargs['comm'] = lvm.comm
-            print('kwargs', kwargs, 'uri', uri, 'mode', mode, 'exists', os.path.exists(uri))
+            # print('kwargs', kwargs, 'uri', uri, 'mode', mode, 'exists', os.path.exists(uri))
             ret = nc.Dataset(uri, mode=mode, **kwargs)
-            print('ret.data_model', ret.data_model)
         else:
             ret = nc.MFDataset(uri, **kwargs)
 
