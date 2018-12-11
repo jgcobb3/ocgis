@@ -852,34 +852,26 @@ class Grid(AbstractGrid, AbstractXYZSpatialContainer):
         if self.is_empty:
             return None
 
-        if not self.is_vectorized:
+        if self.is_vectorized:
             if self.has_bounds:
-                x_bounds = self.x.bounds.get_value()
-                y_bounds = self.y.bounds.get_value()
-                minx = x_bounds.min()
-                miny = y_bounds.min()
-                maxx = x_bounds.max()
-                maxy = y_bounds.max()
+                row = self.y.bounds.v()
+                col = self.x.bounds.v()
             else:
-                x_value = self.x.get_value()
-                y_value = self.y.get_value()
-                minx = x_value.min()
-                miny = y_value.min()
-                maxx = x_value.max()
-                maxy = y_value.max()
+                row = self.y.v()
+                col = self.x.v()
         else:
-            row = self.y
-            col = self.x
-            if not self.has_bounds:
-                minx = col.get_value().min()
-                miny = row.get_value().min()
-                maxx = col.get_value().max()
-                maxy = row.get_value().max()
+            if self.has_bounds:
+                row = self.y.bounds.mv()
+                col = self.x.bounds.mv()
             else:
-                minx = col.bounds.get_value().min()
-                miny = row.bounds.get_value().min()
-                maxx = col.bounds.get_value().max()
-                maxy = row.bounds.get_value().max()
+                row = self.y.mv()
+                col = self.x.mv()
+
+        minx = col.min()
+        miny = row.min()
+        maxx = col.max()
+        maxy = row.max()
+
         return minx, miny, maxx, maxy
 
     def _get_is_empty_(self):

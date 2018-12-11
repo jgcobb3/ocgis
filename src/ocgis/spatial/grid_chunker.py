@@ -455,11 +455,31 @@ class GridChunker(AbstractOcgisObject):
 
         # Loop over each destination grid subset.
         ocgis_lh(logger='grid_chunker', msg='starting "for yld in iter_dst"', level=logging.DEBUG)
-        for yld in iter_dst:
+        for iter_dst_ctr, yld in enumerate(iter_dst, start=1):
+            print("iter_dst_ctr", iter_dst_ctr, flush=True)
             if yield_slice:
                 dst_grid_subset, dst_slice = yld
             else:
                 dst_grid_subset = yld
+
+            # All masked destinations are very problematic for ESMF
+            with vm.scoped_by_emptyable('global mask', dst_grid_subset):
+                if not vm.is_null:
+                    if dst_grid_subset.has_mask_global:
+                        if dst_grid_subset.has_mask:
+                            all_masked = dst_grid_subset.get_mask().all()
+                        else:
+                            all_masked = False
+                        all_masked_gather = vm.gather(all_masked)
+                        if vm.rank == 0:
+                            if all(all_masked_gather):
+                                try:
+                                    raise ValueError("Destination subset all masked")
+                                finally:
+                                    # tdk:FIX: this should be part of vm and do the loggin accordingly; probably a vm.abort(msg, line)
+                                    print("destination subset all masked", flush=True)
+                                    from mpi4py import MPI
+                                    MPI.COMM_WORLD.Abort()
 
             dst_box = None
             with vm.scoped_by_emptyable('extent_global', dst_grid_subset):

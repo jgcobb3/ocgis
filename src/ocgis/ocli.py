@@ -109,7 +109,7 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
         if ocgis.vm.rank == 0:
             # The working directory must not exist to proceed.
             if os.path.exists(wd):
-                exc = ValueError("Working directory 'wd' must not exist.")
+                exc = ValueError("Working directory {} must not exist.".format(wd))
             else:
                 # Make the working directory nesting as needed.
                 os.makedirs(wd)
@@ -188,7 +188,7 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 @click.option('--index_path', required=False, type=click.Path(exists=True, dir_okay=False),
               help='Path grid chunker index file. If not provided, it will assume the default name in the working '
                    'directory.')
-@click.option('--insert_weighted/--no_inserted_weighted', default=False, required=False,
+@click.option('--insert_weighted/--no_insert_weighted', default=False, required=False,
               help='If --insert_weighted, insert the weighted data back into the global destination file.')
 @click.option('-d', '--destination', required=False, type=click.Path(exists=True, dir_okay=False),
               help='Path to the destination grid NetCDF file. Needed if using --insert_weighted.')
@@ -215,10 +215,11 @@ def chunked_smm(wd, index_path, insert_weighted, destination, data_variables):
     # ------------------------------------------------------------------------------------------------------------------
 
     GridChunker.smm(index_path, wd, data_variables=data_variables)
-    with ocgis.vm.scoped_barrier(first=True, last=True):
-        with ocgis.vm.scoped('insert weighted', [0]):
-            if not ocgis.vm.is_null:
-                GridChunker.insert_weighted(index_path, wd, destination, data_variables=data_variables)
+    if insert_weighted:
+        with ocgis.vm.scoped_barrier(first=True, last=True):
+            with ocgis.vm.scoped('insert weighted', [0]):
+                if not ocgis.vm.is_null:
+                    GridChunker.insert_weighted(index_path, wd, destination, data_variables=data_variables)
 
 
 def _create_request_dataset_(path, esmf_type, data_variables=None):

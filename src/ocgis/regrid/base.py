@@ -925,6 +925,7 @@ def smm(index_path, wd=None, data_variables=None):
     wgt_filenames = wgt_filenames.join_string_value()
 
     for ii in range(src_filenames.size):
+        print("smm counter", ii, flush=True)  #tdk:p
         src_path = os.path.join(wd, src_filenames[ii])
         src_field = RequestDataset(src_path, variable=data_variables, decomp_type=DecompositionType.ESMF).create_field()
         src_field.load()
@@ -941,4 +942,4 @@ def smm(index_path, wd=None, data_variables=None):
         regrid_options = {'split': False, 'weights_in': wgt_filenames[ii], 'regrid_method': RegridMethod.BILINEAR}
         ro = RegridOperation(src_field, dst_field, regrid_options=regrid_options)
         regridded = ro.execute()
-        regridded.write(dst_path)
+        # regridded.write(dst_path)  #tdk:FIX: re-enable, turned off for testing
