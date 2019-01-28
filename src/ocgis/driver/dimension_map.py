@@ -313,7 +313,7 @@ class DimensionMap(AbstractOcgisObject):
                     new_variable = base_variable[section]
                     new_dimensions = [d for d in new_variable.dimensions if d.size > 1]
                     new_variable.reshape(new_dimensions)
-                    new_variable.set_name(ii)
+                    new_variable.set_name(base_variable.name + '_' + ii)
                     entry[DMK.VARIABLE] = new_variable.name
                     entry.pop(DMK.SECTION)
                     new_variable = new_variable.extract()

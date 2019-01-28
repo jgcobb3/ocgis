@@ -1,19 +1,18 @@
 import itertools
 
 import numpy as np
-from shapely import wkt
-from shapely.geometry import MultiPolygon
-
 import ocgis
 from ocgis import GeometryVariable, vm, Field
 from ocgis.base import get_variable_names
-from ocgis.constants import DriverKey, VariableName
+from ocgis.constants import DriverKey, VariableName, Topology
 from ocgis.driver.nc_esmf_unstruct import DriverESMFUnstruct
 from ocgis.driver.request.core import RequestDataset
 from ocgis.spatial.geomc import PolygonGC
 from ocgis.spatial.grid import GridUnstruct
 from ocgis.test.base import TestBase, attr
 from ocgis.variable.crs import WGS84, Spherical, create_crs
+from shapely import wkt
+from shapely.geometry import MultiPolygon
 
 
 class TestDriverESMFUnstruct(TestBase):
@@ -126,6 +125,40 @@ class TestDriverESMFUnstruct(TestBase):
         self.assertTrue(field.geom.protected)
         path = self.get_temporary_file_path('out.nc')
         gc.parent.write(path)
+
+    def test_create_dimension_map(self):
+        meta = {'groups': {},
+                'global_attributes': {'gridType': 'unstructured mesh', 'version': '0.9',
+                                      'inputFile': '/Users/robert.oehmke/grids/ll_grids/ll1280x1280_grid.nc',
+                                      'timeGenerated': 'Tu'},
+                'file_format': 'NETCDF3_CLASSIC',
+                'variables': {'nodeCoords': {'dimensions': ('nodeCount', 'coordDim'), 'attrs': {'units': 'degrees'},
+                                             'dtype': np.dtype('float64'), 'name': 'nodeCoords', 'fill_value': 'auto',
+                                             'dtype_packed': None, 'fill_value_packed': None},
+                              'elementConn': {'dimensions': ('elementCount', 'maxNodePElement'), 'attrs': {
+                                  'long_name': 'Node indices that define the element connectivity', '_FillValue': -1},
+                                              'dtype': np.dtype('int32'), 'name': 'elementConn', 'fill_value': -1,
+                                              'dtype_packed': None, 'fill_value_packed': None},
+                              'numElementConn': {'dimensions': ('elementCount',),
+                                                 'attrs': {'long_name': 'Number of nodes per element'},
+                                                 'dtype': np.dtype('int8'), 'name': 'numElementConn',
+                                                 'fill_value': 'auto',
+                                                 'dtype_packed': None, 'fill_value_packed': None},
+                              'centerCoords': {'dimensions': ('elementCount', 'coordDim'),
+                                               'attrs': {'units': 'degrees'}, 'dtype': np.dtype('float64'),
+                                               'name': 'centerCoords', 'fill_value': 'auto', 'dtype_packed': None,
+                                               'fill_value_packed': None},
+                              'elementMask': {'dimensions': ('elementCount',), 'attrs': {}, 'dtype': np.dtype('int32'),
+                                              'name': 'elementMask', 'fill_value': 'auto', 'dtype_packed': None,
+                                              'fill_value_packed': None}},
+                'dimensions': {'nodeCount': {'name': 'nodeCount', 'size': 1639680, 'isunlimited': False},
+                               'elementCount': {'name': 'elementCount', 'size': 1638400, 'isunlimited': False},
+                               'maxNodePElement': {'name': 'maxNodePElement', 'size': 4, 'isunlimited': False},
+                               'coordDim': {'name': 'coordDim', 'size': 2, 'isunlimited': False}}}
+        d = DriverESMFUnstruct(None)
+        dimmap = d.create_dimension_map(meta)
+        self.assertIsNotNone(dimmap.get_topology(Topology.POINT))
+        self.assertIsNotNone(dimmap.get_topology(Topology.POLYGON))
 
     def test_get_field_write_target(self):
         p1 = 'Polygon ((-116.94238466549290933 52.12861711455555991, -82.00526805089285176 61.59075286434307372, -59.92695130138864101 31.0207758265680269, -107.72286778108455962 22.0438778075388484, -122.76523743459291893 37.08624746104720771, -116.94238466549290933 52.12861711455555991))'

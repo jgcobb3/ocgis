@@ -17,21 +17,29 @@ class DriverESMFUnstruct(AbstractUnstructuredDriver, AbstractDriverNetcdfCF):
 
     def create_dimension_map(self, group_metadata, strict=False):
         dmap = super(AbstractDriverNetcdfCF, self).create_dimension_map(group_metadata, strict=strict)
-        topo = dmap.get_topology(Topology.POLYGON, create=True)
+        polyt = dmap.get_topology(Topology.POLYGON, create=True)
 
         name_element_conn = 'elementConn'
         varmeta = group_metadata['variables']
-        topo.set_variable(DMK.ELEMENT_NODE_CONNECTIVITY, name_element_conn,
-                          dimension=varmeta[name_element_conn]['dimensions'][0])
-        vattrs = topo.get_attrs(DMK.ELEMENT_NODE_CONNECTIVITY)
+        polyt.set_variable(DMK.ELEMENT_NODE_CONNECTIVITY, name_element_conn,
+                           dimension=varmeta[name_element_conn]['dimensions'][0])
+        vattrs = polyt.get_attrs(DMK.ELEMENT_NODE_CONNECTIVITY)
         vattrs.pop(CFName.STANDARD_NAME, None)
         vattrs[OcgisConvention.Name.ELEMENT_NODE_COUNT] = 'numElementConn'
 
         # The ESMF unstructured format stored coordinates together in a variable. This requires sections.
         node_coords_name = 'nodeCoords'
         node_coords_dimension = varmeta[node_coords_name]['dimensions'][0]
-        topo.set_variable(DMK.X, node_coords_name, dimension=[node_coords_dimension], section=(None, 0))
-        topo.set_variable(DMK.Y, node_coords_name, dimension=[node_coords_dimension], section=(None, 1))
+        polyt.set_variable(DMK.X, node_coords_name, dimension=[node_coords_dimension], section=(None, 0))
+        polyt.set_variable(DMK.Y, node_coords_name, dimension=[node_coords_dimension], section=(None, 1))
+
+        # Attempt to find/add element center coordinates
+        center_coords_name = 'centerCoords'
+        if center_coords_name in group_metadata['variables']:
+            center_coords_dimension = 'elementCount'
+            pointt = dmap.get_topology(Topology.POINT, create=True)
+            pointt.set_variable(DMK.X, center_coords_name, dimension=[center_coords_dimension], section=(None, 0))
+            pointt.set_variable(DMK.Y, center_coords_name, dimension=[center_coords_dimension], section=(None, 1))
 
         return dmap
 
