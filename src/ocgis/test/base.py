@@ -1313,13 +1313,20 @@ def create_exact_field(grid, data_varname, ntime=1, fill_data_var=True, crs='aut
 
 
 def create_gridxy_global(resolution=1.0, with_bounds=True, wrapped=True, crs=None, dtype=None, dist=True,
-                         dist_dimname='y'):
+                         dist_dimname='y', y_domain=None, x_domain=None):
+    if y_domain is None:
+        y_domain = [-90.0, 90.0]
+    if x_domain is None:
+        if wrapped:
+            x_domain = [-180.0, 180.0]
+        else:
+            x_domain = [0.0, 360.0]
     half_resolution = 0.5 * resolution
-    y = np.arange(-90.0 + half_resolution, 90.0, resolution)
+    y = np.arange(y_domain[0] + half_resolution, y_domain[1], resolution)
     if wrapped:
-        x = np.arange(-180.0 + half_resolution, 180.0, resolution)
+        x = np.arange(x_domain[0] + half_resolution, x_domain[1], resolution)
     else:
-        x = np.arange(0.0 + half_resolution, 360.0, resolution)
+        x = np.arange(x_domain[0] + half_resolution, x_domain[1], resolution)
 
     if dist:
         ompi = OcgDist()
