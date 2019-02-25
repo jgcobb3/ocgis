@@ -22,7 +22,7 @@ def ocli():
     pass
 
 
-@ocli.command(help='Generate regridding weights using a spatial decomposition.')
+@ocli.command(help='Generate regridding weights using a spatial decomposition.', name='chunked-rwg')
 @click.option('-s', '--source', required=True, type=click.Path(exists=True, dir_okay=False),
               help='Path to the source grid NetCDF file.')
 @click.option('-d', '--destination', required=True, type=click.Path(exists=True, dir_okay=False),
@@ -80,7 +80,7 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
     if not ocgis.env.USE_NETCDF4_MPI:
         msg = ('env.USE_NETCDF4_MPI is False. Considerable performance gains are possible if this is True. Is '
                'netCDF4-python built with parallel support?')
-        ocgis_lh(msg, level=logging.WARN, logger='ocli.chunked_rwg', force=True)
+        ocgis_lh(msg, level=logging.WARN, logger='ocli.chunked-rwg', force=True)
 
     if data_variables is not None:
         data_variables = data_variables.split(',')
