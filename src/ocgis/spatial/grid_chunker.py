@@ -776,8 +776,8 @@ class GridChunker(AbstractOcgisObject):
                 raise NotImplementedError
 
             if not is_unstruct:
-                islice = [slice(y_bounds[ii][0], y_bounds[ii][1]),
-                          slice(x_bounds[ii][0], x_bounds[ii][1])]
+                islice = tuple([slice(y_bounds[ii][0], y_bounds[ii][1]),
+                                slice(x_bounds[ii][0], x_bounds[ii][1])])
                 oindices = indices[islice]
                 oindices = oindices.flatten()
 

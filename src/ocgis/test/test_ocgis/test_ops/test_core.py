@@ -149,7 +149,7 @@ class TestOcgOperations(TestBase):
         formats = [{0: 'NETCDF3_CLASSIC',
                     1: 'NETCDF3_CLASSIC'},
                    {0: 'NETCDF3_CLASSIC',
-                    1: 'NETCDF3_64BIT_OFFSET'}
+                    1: 'NETCDF3_64BIT'}
                    ]
 
         grid = create_gridxy_global()

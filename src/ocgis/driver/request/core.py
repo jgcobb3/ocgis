@@ -151,8 +151,7 @@ class RequestDataset(AbstractRequestObject):
         self._time_region = None
         self._time_subset_func = None
         self._driver_kwargs = driver_kwargs
-
-        self.decomp_type = decomp_type
+        self._decomp_type = decomp_type
 
         if rename_variable is not None:
             rename_variable = get_tuple(rename_variable)
@@ -287,6 +286,11 @@ class RequestDataset(AbstractRequestObject):
         else:
             ret = self._crs
         return ret
+
+    @property
+    def decomp_type(self):
+        #tdk:doc
+        return self._decomp_type
 
     @property
     def driver(self):
