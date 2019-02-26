@@ -934,7 +934,7 @@ def smm(index_path, wd=None, data_variables=None):
     wgt_filenames = wgt_filenames.join_string_value()
 
     for ii in range(src_filenames.size):
-        print("smm counter", ii, flush=True)  #tdk:p
+        ocgis_lh(msg="Running SMM {} of {}".format(ii+1, src_filenames.size), level=10, logger='regrid.base')
         src_path = os.path.join(wd, src_filenames[ii])
         src_field = RequestDataset(src_path, variable=data_variables, decomp_type=DecompositionType.ESMF).create_field()
         src_field.load()

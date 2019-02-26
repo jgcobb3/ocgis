@@ -376,7 +376,6 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
     @attr('esmf', 'mpi')
     def test_write_esmf_weights(self):
-        ocgis_lh.configure(to_stream=True, level=logging.DEBUG) #tdk:rm
         # Create source and destination fields. This is the identity test, so the source and destination fields are
         # equivalent.
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
