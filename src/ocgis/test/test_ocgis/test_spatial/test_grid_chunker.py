@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from copy import deepcopy
@@ -13,6 +14,7 @@ from ocgis.spatial.grid_chunker import GridChunker, does_contain, get_grid_objec
 from ocgis.test import create_exact_field
 from ocgis.test.base import attr, AbstractTestInterface, create_gridxy_global, TestBase
 from ocgis.test.test_ocgis.test_driver.test_nc_scrip import FixtureDriverNetcdfSCRIP
+from ocgis.util.logging_ocgis import ocgis_lh
 from ocgis.variable.base import Variable
 from ocgis.variable.crs import Spherical
 from ocgis.variable.dimension import Dimension
@@ -374,6 +376,7 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
     @attr('esmf', 'mpi')
     def test_write_esmf_weights(self):
+        ocgis_lh.configure(to_stream=True, level=logging.DEBUG) #tdk:rm
         # Create source and destination fields. This is the identity test, so the source and destination fields are
         # equivalent.
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
@@ -398,6 +401,7 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
             src_field_path = None
         master_path = vm.bcast(master_path)
         src_field_path = vm.bcast(src_field_path)
+        assert not os.path.exists(master_path)
         dst_field.write(master_path)
         src_field.write(src_field_path)
 

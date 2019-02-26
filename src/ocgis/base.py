@@ -220,6 +220,8 @@ def iter_variables(target, container):
 
 @contextmanager
 def orphaned(target, keep_dimensions=False):
+    from ocgis.util.logging_ocgis import ocgis_lh #tdk:rm
+    ocgis_lh(logger='base', msg='entering orphaned', level=10) #tdk:rm
     if keep_dimensions:
         target._dimensions_cache = target.dimensions
     has_initialized_parent = target.has_initialized_parent
@@ -227,6 +229,7 @@ def orphaned(target, keep_dimensions=False):
         original_parent = target.parent
         target.parent = None
     try:
+        ocgis_lh(logger='base', msg='yielding orphaned', level=10) #tdk:rm
         yield target
     finally:
         if has_initialized_parent:

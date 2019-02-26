@@ -25,7 +25,7 @@ from ocgis.variable.crs import CFCoordinateReferenceSystem, CoordinateReferenceS
     AbstractProj4CRS
 from ocgis.variable.dimension import Dimension
 from ocgis.variable.temporal import TemporalVariable
-from ocgis.vmachine.mpi import OcgDist
+from ocgis.vmachine.mpi import OcgDist, barrier_print
 
 
 class DriverNetcdf(AbstractDriver):
@@ -89,7 +89,6 @@ class DriverNetcdf(AbstractDriver):
         if var.name is None:
             msg = 'A variable "name" is required.'
             raise ValueError(msg)
-
         # Dimension creation should not occur during a fill operation. The dimensions and variables have already been
         # created.
         if write_mode != MPIWriteMode.FILL:
@@ -137,6 +136,9 @@ class DriverNetcdf(AbstractDriver):
             ncvar = dataset.variables[var.name]
         else:
             ncvar = dataset.createVariable(var.name, dtype, dimensions=dimensions, fill_value=fill_value, **kwargs)
+            if write_mode == MPIWriteMode.ASYNCHRONOUS:
+                # Tell NC4 we are writing the variable in parallel
+                ncvar.set_collective(True)
 
         # Do not fill values on file_only calls. Also, only fill values for variables with dimension greater than zero.
         if not file_only and not var.is_empty and not isinstance(var, CoordinateReferenceSystem):
@@ -195,6 +197,7 @@ class DriverNetcdf(AbstractDriver):
             possible_ranks = vm.ranks
 
         # Write the data on each rank.
+        ocgis_lh(logger='driver.nc', msg='starting main write loop for variable collection, write_mode={}'.format(write_mode), level=10)
         for idx, rank_to_write in enumerate(possible_ranks):
             # The template write only occurs on the first rank.
             if write_mode == MPIWriteMode.TEMPLATE and rank_to_write != 0:
@@ -205,15 +208,18 @@ class DriverNetcdf(AbstractDriver):
                     # Write global attributes if we are not filling data.
                     if write_mode != MPIWriteMode.FILL:
                         vc.write_attributes_to_netcdf_object(dataset)
+                        ocgis_lh(logger='driver.nc', msg='wrote attributes', level=10)
                     # This is the main variable write loop.
                     variables_to_write = get_variables_to_write(vc)
                     for variable in variables_to_write:
                         # Load the variable's data before orphaning. The variable needs its parent to know which
                         # group it is in.
                         variable.load()
+                        ocgis_lh(logger='driver.nc', msg='loaded variable {}'.format(variable.name), level=10)  # tdk:rm
                         # Call the individual variable write method in fill mode. Orphaning is required as a
                         # variable will attempt to write its parent first.
                         with orphaned(variable, keep_dimensions=True):
+                            ocgis_lh(logger='driver.nc', msg='calling variable.write for {}'.format(variable.name), level=10) #tdk:rm
                             variable.write(dataset, write_mode=write_mode, **variable_kwargs)
                     # Recurse the children.
                     for child in list(vc.children.values()):
@@ -248,9 +254,11 @@ class DriverNetcdf(AbstractDriver):
         """
         :rtype: object
         """
+        ocgis_lh(logger='driver.nc', msg='_open_: entering, vm.current_comm_name={}'.format(vm.current_comm_name), level=10)
         kwargs = kwargs.copy()
         group_indexing = kwargs.pop('group_indexing', None)
         lvm = kwargs.pop('vm', vm)
+        ocgis_lh(logger='driver.nc', msg="_open_: lvm.current_comm_name={}, lvm.size={}".format(vm.current_comm_name, vm.size), level=10)
 
         if isinstance(uri, six.string_types):
             # Open the dataset in parallel if we want to use the netCDF MPI capability. It may not be available even in
@@ -259,11 +267,12 @@ class DriverNetcdf(AbstractDriver):
                 if kwargs.get('format', 'NETCDF4') == 'NETCDF4':
                     if kwargs.get('parallel') is None and env.USE_NETCDF4_MPI:
                         kwargs['parallel'] = True
+                        ocgis_lh(msg="using parallel/concurrent IO, lvm.current_comm_name={}, lvm.size={}, lvm.ranks={}".format(lvm.current_comm_name, lvm.size, list(lvm.ranks)), level=logging.DEBUG) #tdk:rm
                     if kwargs.get('parallel') and kwargs.get('comm') is None:
                         kwargs['comm'] = lvm.comm
-            # print('kwargs', kwargs, 'uri', uri, 'mode', mode, 'exists', os.path.exists(uri))
+            ocgis_lh(logger='driver.nc', msg='_open_: kwargs to nc.Dataset={}'.format(kwargs), level=10) #tdk:rm
             ret = nc.Dataset(uri, mode=mode, **kwargs)
-
+            ocgis_lh(logger='driver.nc', msg='_open_: successfully opened nc.Dataset', level=10)
             # tdk: FIX: this should be enabled for MFDataset as well. see https://github.com/Unidata/netcdf4-python/issues/809#issuecomment-435144221
             # netcdf4 >= 1.4.0 always returns masked arrays. This is inefficient and is turned off by default by ocgis.
             if hasattr(ret, 'set_always_mask'):
@@ -275,6 +284,7 @@ class DriverNetcdf(AbstractDriver):
             for group_name in get_iter(group_indexing):
                 ret = ret.groups[group_name]
 
+        ocgis_lh(logger='driver.nc', msg='_open_: returning', level=10)
         return ret
 
 

@@ -464,7 +464,7 @@ class GridChunker(AbstractOcgisObject):
         # Loop over each destination grid subset.
         ocgis_lh(logger='grid_chunker', msg='starting "for yld in iter_dst"', level=logging.DEBUG)
         for iter_dst_ctr, yld in enumerate(iter_dst, start=1):
-            print("iter_dst_ctr", iter_dst_ctr, flush=True) #tdk:p
+            ocgis_lh(msg=["iter_dst_ctr", iter_dst_ctr], level=logging.DEBUG)
             if yield_slice:
                 dst_grid_subset, dst_slice = yld
             else:
@@ -615,13 +615,16 @@ class GridChunker(AbstractOcgisObject):
             else:
                 zip_args = [[sub_src], [src_path]]
 
+            cc = 1
             for target, path in zip(*zip_args):
-                with vm.scoped_by_emptyable('field.write', target):
+                ocgis_lh(logger='grid_chunker', msg="write_chunks:target.is_empty={}".format(target.is_empty), level=logging.DEBUG) #tdk:rm
+                with vm.scoped_by_emptyable('field.write'+str(cc), target):
                     if not vm.is_null:
-                        ocgis_lh(logger='grid_chunker', msg='writing: {}'.format(path), level=logging.DEBUG)
+                        ocgis_lh(logger='grid_chunker', msg='write_chunks:writing: {}'.format(path), level=logging.DEBUG)
                         field = Field(grid=target)
                         field.write(path)
-                        ocgis_lh(logger='grid_chunker', msg='finished writing: {}'.format(path), level=logging.DEBUG)
+                        ocgis_lh(logger='grid_chunker', msg='write_chunks:finished writing: {}'.format(path), level=logging.DEBUG)
+                cc+=1
 
             # Increment the counter outside of the loop to avoid counting empty subsets.
             ctr += 1
