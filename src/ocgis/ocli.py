@@ -74,9 +74,11 @@ def ocli():
                    'and do not raise an exception.')
 @click.option('--data_variables', default=None, type=str,
               help='List of comma-separated data variable names to overload auto-discovery.')
+@click.option('--spatial_subset_path', default=None, type=click.Path(dir_okay=False),
+              help='Optional path to the output spatial subset file. Only applicable when using --spatial_subset.')
 def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, esmf_dst_type, genweights,
                 esmf_regrid_method, spatial_subset, src_resolution, dst_resolution, buffer_distance, wd, persist,
-                eager, ignore_degenerate, data_variables):
+                eager, ignore_degenerate, data_variables, spatial_subset_path):
     if not ocgis.env.USE_NETCDF4_MPI:
         msg = ('env.USE_NETCDF4_MPI is False. Considerable performance gains are possible if this is True. Is '
                'netCDF4-python built with parallel support?')
@@ -128,9 +130,10 @@ def chunked_rwg(source, destination, weight, nchunks_dst, merge, esmf_src_type, 
 
     # Execute a spatial subset if requested.
     paths = None
-    if spatial_subset and not smm:
+    if spatial_subset:
         # TODO: This path should be customizable.
-        spatial_subset_path = os.path.join(wd, 'spatial_subset.nc')
+        if spatial_subset_path is None:
+            spatial_subset_path = os.path.join(wd, 'spatial_subset.nc')
         _write_spatial_subset_(rd_src, rd_dst, spatial_subset_path)
     # Only split grids if a spatial subset is not requested.
     else:
@@ -260,7 +263,10 @@ def _write_spatial_subset_(rd_src, rd_dst, spatial_subset_path):
     else:
         sub_src = reduced.parent
 
-    sub_src.write(spatial_subset_path)
+    # Write the subset to file.
+    with ocgis.vm.scoped_by_emptyable("spatial subset write", sub_src):
+        if not ocgis.vm.is_null:
+            sub_src.write(spatial_subset_path)
 
 
 if __name__ == '__main__':

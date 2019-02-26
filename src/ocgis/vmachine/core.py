@@ -85,6 +85,12 @@ class OcgVM(AbstractOcgisObject):
     def size_global(self):
         return MPI_SIZE
 
+    def abort(self):
+        #tdk:test: does this work in serial? on a null rank? on all ranks?
+        #tdk:TODO: the comm world handling is buggy
+
+        self.comm_world.Abort()
+
     def barrier(self):
         self.comm.Barrier()
 

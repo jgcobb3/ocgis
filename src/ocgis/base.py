@@ -238,7 +238,11 @@ def orphaned(target, keep_dimensions=False):
 def raise_if_empty(target):
     if target.is_empty:
         msg = 'No empty {} objects allowed.'.format(target.__class__)
-        raise EmptyObjectError(msg)
+        try:
+            raise EmptyObjectError(msg)
+        finally:
+            from mpi4py import MPI
+            MPI.COMM_WORLD.Abort()
 
 
 @contextmanager

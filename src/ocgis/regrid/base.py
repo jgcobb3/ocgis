@@ -633,9 +633,8 @@ def check_fields_for_regridding(source, destination, regrid_method='auto'):
             raise CornersInconsistentError(msg)
 
 
-def regrid_field(source, destination, regrid_method='auto', value_mask=None, split=True, weights_in=None,
-                 weights_out=None):
-def regrid_field(source, destination, regrid_method='auto', value_mask=None, split=True, fill_value=None):
+def regrid_field(source, destination, regrid_method='auto', value_mask=None, split=True, fill_value=None,
+                 weights_in=None, weights_out=None):
     """
     Regrid ``source`` data to match the grid of ``destination``.
 
