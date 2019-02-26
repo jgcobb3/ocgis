@@ -12,7 +12,7 @@ from ocgis import vm
 from ocgis.base import AbstractOcgisObject, raise_if_empty
 from ocgis.base import get_variable_names
 from ocgis.collection.field import Field
-from ocgis.constants import MPIWriteMode, TagName, KeywordArgument, OcgisConvention, VariableName
+from ocgis.constants import MPIWriteMode, TagName, KeywordArgument, OcgisConvention, VariableName, DecompositionType
 from ocgis.driver.dimension_map import DimensionMap
 from ocgis.exc import DefinitionValidationError, NoDataVariablesFound, DimensionMapError, VariableMissingMetadataError, \
     GridDeficientError
@@ -380,7 +380,7 @@ class AbstractDriver(AbstractOcgisObject):
         """
         return tuple(group_metadata['variables'].keys())
 
-    def get_distributed_dimension_name(self, dimension_map, dimensions_metadata):
+    def get_distributed_dimension_name(self, dimension_map, dimensions_metadata, decomp_type=DecompositionType.OCGIS):
         """Return the preferred distributed dimension name."""
         return None
 
@@ -875,7 +875,7 @@ class AbstractTabularDriver(AbstractDriver):
     Base class for tabular drivers (no optimal single variable access).
     """
 
-    def get_distributed_dimension_name(self, dimension_map, dimensions_metadata):
+    def get_distributed_dimension_name(self, dimension_map, dimensions_metadata, decomp_type=DecompositionType.OCGIS):
         """Return the preferred distributed dimension name."""
         return list(dimensions_metadata.values())[0]['name']
 
