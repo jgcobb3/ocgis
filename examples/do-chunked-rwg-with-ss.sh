@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
-# The base or working directory. A chunking directory will be created here.
+# The base or working directory.
 WD=~/scratch/
+
+# Directory to write all the chunked files to.
+CHUNKDIR=${WD}/chunking
 
 # Path to the source field/grid netCDF file.
 SRC=grid_global_19980_39960.nc
@@ -39,6 +42,6 @@ ${EXEC_PREFIX} ${CRWG} --source ${SRC} --destination ${DST} --spatial_subset \
 # Generate the weights using the spatially subset source field and destination
 # field.
 
-${EXEC_PREFIX} ${CRWG} --source ${SS_PATH} --destination ${DATADIR}/${DST} \
+${EXEC_PREFIX} ${CRWG} --source ${SS_PATH} --destination ${DST} \
  --esmf_regrid_method CONSERVE --nchunks_dst ${NCHUNKS_DST} --wd ${CHUNKDIR} \
  --weight ${WEIGHTS} --persist
