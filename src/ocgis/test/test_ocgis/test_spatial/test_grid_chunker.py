@@ -374,14 +374,6 @@ class TestGridChunker(AbstractTestInterface, FixtureDriverNetcdfSCRIP):
 
     @attr('esmf', 'mpi')
     def test_write_esmf_weights(self):
-        # tdk: comment
-        # tdk: add support for mask
-
-        # tdk: remove
-        self.remove_dir = False
-        print(self.current_dir_output)
-        self.add_barrier = False
-
         # Create source and destination fields. This is the identity test, so the source and destination fields are
         # equivalent.
         src_grid = create_gridxy_global(resolution=3.0, crs=Spherical())
