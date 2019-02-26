@@ -372,7 +372,15 @@ class GridChunker(AbstractOcgisObject):
                         slc = {dst_master_field.time.dimensions[0].name: time_index,
                                dst_master_field.y.dimensions[0].name: slice(None),
                                dst_master_field.x.dimensions[0].name: slice(None)}
-                        source_data = RequestDataset(source_path).get()[data_variable.name][slc]
+                        source_field = RequestDataset(source_path).create_field()
+                        try:
+                            source_data = source_field[data_variable.name][slc]
+                        except KeyError:
+                            if data_variable.name not in source_field.keys():
+                                msg = "The destination variable '{}' is not in the destination file '{}'. Was SMM applied?".format(data_variable.name, source_path)
+                                raise KeyError(msg)
+                            else:
+                                raise
                         assert not source_data.has_allocated_value
                         with nc.Dataset(dst_master_path, 'a') as ds:
                             ds.variables[data_variable.name][time_index, y_bounds[vidx][0]:y_bounds[vidx][1],
@@ -456,7 +464,7 @@ class GridChunker(AbstractOcgisObject):
         # Loop over each destination grid subset.
         ocgis_lh(logger='grid_chunker', msg='starting "for yld in iter_dst"', level=logging.DEBUG)
         for iter_dst_ctr, yld in enumerate(iter_dst, start=1):
-            print("iter_dst_ctr", iter_dst_ctr, flush=True)
+            print("iter_dst_ctr", iter_dst_ctr, flush=True) #tdk:p
             if yield_slice:
                 dst_grid_subset, dst_slice = yld
             else:

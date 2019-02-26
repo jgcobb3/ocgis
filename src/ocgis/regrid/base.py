@@ -914,6 +914,7 @@ def create_esmf_regrid(**kwargs):
 
 
 def smm(index_path, wd=None, data_variables=None):
+    #tdk:doc
     if wd is None:
         wd = ''
 
@@ -950,4 +951,4 @@ def smm(index_path, wd=None, data_variables=None):
         regrid_options = {'split': False, 'weights_in': wgt_filenames[ii], 'regrid_method': RegridMethod.BILINEAR}
         ro = RegridOperation(src_field, dst_field, regrid_options=regrid_options)
         regridded = ro.execute()
-        # regridded.write(dst_path)  #tdk:FIX: re-enable, turned off for testing
+        regridded.write(dst_path)
